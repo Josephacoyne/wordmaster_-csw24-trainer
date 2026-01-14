@@ -135,7 +135,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({
   if (!currentWord) return <div>Loading...</div>;
 
   return (
-    <div className="flex flex-col h-full bg-slate-50">
+    <div className="fixed inset-0 flex flex-col h-[100svh] w-full bg-slate-50 overflow-hidden">
       <div className="flex items-center justify-between p-4 bg-white shadow-sm z-10">
          <button onClick={onExit} className="p-2 text-slate-400 hover:text-slate-600">
            <ArrowLeft />
@@ -184,7 +184,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({
       </div>
 
          {/* Keyboard with Easy Mode Highlights */}
-         <div className="bg-white p-2 pb-8 border-t border-slate-100">
+         <div className="bg-white p-2 pb-4 border-t border-slate-100">
         <div className="max-w-md mx-auto flex flex-col gap-2">
           {[
             ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],

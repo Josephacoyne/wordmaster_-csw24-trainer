@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { WordEntry, Difficulty } from '../types';
-import { ArrowLeft, Grid } from 'lucide-react';
+import { ArrowLeft, Grid, Delete } from 'lucide-react';
 
 interface TrainingViewProps {
   pool: WordEntry[];
@@ -126,43 +126,49 @@ const TrainingView: React.FC<TrainingViewProps> = ({
   const strictFail = () => {
     // Show feedback briefly then trigger reset
     setTimeout(() => {
-      onFail(currentWord); // App will reset Index to 0
+      onFail(currentWord); 
+      // Force local reset immediately to allow UI to update even if parent prop lag
+      setInternalIndex(0);
+      setInputValue('');
+      setFeedback({ msg: 'Type the missing letters', type: 'neutral' });
     }, 1500);
   };
 
-  const keyboardKeys = "QWERTYUIOPASDFGHJKLZXCVBNM".split('');
+  const handleDelete = () => {
+    setInputValue(prev => prev.slice(0, -1));
+  };
 
   if (!currentWord) return <div>Loading...</div>;
 
   return (
     <div className="fixed inset-0 flex flex-col h-[100svh] w-full bg-slate-50 overflow-hidden">
-      <div className="flex items-center justify-between p-4 bg-white shadow-sm z-10">
+      <div className="flex items-center justify-between p-3 bg-white shadow-sm z-10 shrink-0 h-14">
          <button onClick={onExit} className="p-2 text-slate-400 hover:text-slate-600">
-           <ArrowLeft />
+           <ArrowLeft size={20} />
          </button>
          <div className="flex flex-col items-center">
-            <span className="text-xs font-bold text-slate-400">TRAINING {currentLetter}</span>
-            <span className="text-sm font-black text-indigo-600">{internalIndex + 1} / {pool.length}</span>
+            <span className="text-[9px] font-bold text-slate-400">TRAINING {currentLetter}</span>
+            <span className="text-[10px] font-black text-indigo-600">{internalIndex + 1} / {pool.length}</span>
          </div>
          <button onClick={() => setShowLetterSkip(true)} className="p-2 text-indigo-500 bg-indigo-50 rounded-lg">
-           <Grid size={24} />
+           <Grid size={20} />
          </button>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center p-4">
-         <div className="w-full max-w-sm bg-white rounded-[2rem] shadow-xl p-8 border-2 border-slate-100 relative">
-            <div className="text-center mb-10 min-h-[5rem] flex items-center justify-center">
-               <p className="text-xl font-medium text-slate-700 leading-snug">{currentWord.d}</p>
+      <div className="flex-1 flex flex-col items-center justify-center p-2 min-h-0">
+         <div className="bg-white rounded-[1.5rem] p-3 shadow-xl w-full max-w-xs relative overflow-hidden border-2 border-slate-100 flex flex-col items-center justify-center max-h-full">
+            <div className="text-center mb-4 mt-2 min-h-[3rem] flex items-center justify-center max-h-[30%] overflow-y-auto no-scrollbar">
+               <p className="text-lg font-medium text-slate-700 leading-snug px-2">{currentWord.d}</p>
             </div>
 
-            <div className="flex justify-center gap-2 mb-6">
+            <div className="flex justify-center gap-1 mb-4 shrink-0">
                {prefix.split('').map((char, i) => (
-                  <div key={`p-${i}`} className="w-14 h-20 bg-slate-100 rounded-xl flex items-center justify-center text-4xl font-black text-slate-400 select-none">
+                  <div key={`p-${i}`} className="w-10 h-12 bg-slate-100 rounded-lg flex items-center justify-center text-2xl font-black text-slate-400 select-none">
                     {char}
                   </div>
                ))}
                {targetSuffix.split('').map((_, i) => (
-                  <div key={`i-${i}`} className={`w-14 h-20 border-b-4 flex items-center justify-center text-4xl font-black transition-colors ${
+                  <div key={`i-${i}`} className={`w-10 h-12 border-b-4 flex items-center justify-center text-2xl font-black transition-colors ${
                      feedback.type === 'error' ? 'border-rose-400 text-rose-500 bg-rose-50' :
                      feedback.type === 'warning' ? 'border-amber-400 text-amber-500 bg-amber-50' :
                      feedback.type === 'success' ? 'border-emerald-400 text-emerald-500 bg-emerald-50' :
@@ -173,7 +179,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({
                ))}
             </div>
 
-            <div className={`text-center font-bold h-6 transition-all ${
+            <div className={`text-center font-bold h-6 transition-all shrink-0 ${
                 feedback.type === 'error' ? 'text-rose-500' :
                 feedback.type === 'warning' ? 'text-amber-500' :
                 feedback.type === 'success' ? 'text-emerald-500' : 'text-slate-300'
@@ -183,22 +189,31 @@ const TrainingView: React.FC<TrainingViewProps> = ({
          </div>
       </div>
 
-         {/* Keyboard with Easy Mode Highlights */}
-         <div className="bg-white p-2 pb-4 border-t border-slate-100">
-        <div className="max-w-md mx-auto flex flex-col gap-2">
+      {/* Keyboard with Easy Mode Highlights */}
+      <div className="bg-white p-2 pb-4 border-t border-slate-100 shrink-0 relative">
+        {/* DEL Button positioned absolute top-right of keyboard area */}
+        <button 
+          onClick={handleDelete}
+          className="absolute top-[-10px] right-2 bg-white border border-slate-200 shadow-sm rounded-full p-2 text-slate-500 hover:text-rose-500 active:bg-slate-50 z-20"
+          aria-label="Delete"
+        >
+          <Delete size={18} />
+        </button>
+
+        <div className="max-w-md mx-auto flex flex-col gap-1">
           {[
             ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
             ['J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R'],
             ['S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
           ].map((row, i) => (
-            <div key={i} className="flex justify-center gap-1">
+            <div key={i} className="flex justify-center gap-0.5">
               {row.map(k => {
                 const isPossible = highlightedKeys.has(k);
                 return (
                   <button
                     key={k}
                     onClick={() => handleKeyPress(k)}
-                    className={`aspect-[3/4] rounded-md font-bold text-lg transition-all flex-1 max-w-[45px] ${
+                    className={`aspect-[3/4] rounded font-bold text-base transition-all flex-1 max-w-[40px] ${
                        isPossible 
                          ? 'bg-yellow-100 border border-yellow-300 text-yellow-800 shadow-sm hover:bg-yellow-200' 
                          : 'bg-slate-50 border border-slate-200 text-slate-600 active:bg-slate-200'

@@ -184,26 +184,20 @@ const HookView: React.FC<HookViewProps> = ({
                  key={k}
                  onClick={() => difficulty !== 'HARD' && handlePress(k)}
                  onPointerDown={(e) => {
-                   // Do NOT release capture to ensure we track the hold
+                   e.currentTarget.releasePointerCapture(e.pointerId);
                    handlePressStart(k);
                  }}
                  onPointerUp={handlePressEnd}
                  onPointerLeave={handlePressEnd}
-                 onPointerCancel={handlePressEnd}
                  onContextMenu={(e) => e.preventDefault()}
-                 className={`aspect-[3/4] rounded-md font-bold text-lg transition-all select-none touch-manipulation relative overflow-hidden ${
+                 className={`aspect-[3/4] rounded-md font-bold text-lg transition-all select-none touch-manipulation ${
                     isPressing ? 'scale-90 bg-indigo-200 border-indigo-400 text-indigo-800' :
                     isValidOption 
                     ? 'bg-yellow-100 border border-yellow-300 text-yellow-800 shadow-sm hover:bg-yellow-200'
                     : 'bg-slate-50 border border-slate-200 text-slate-600 active:bg-slate-200'
                  }`}
                >
-                 {difficulty === 'HARD' && (
-                    <div 
-                      className={`absolute bottom-0 left-0 right-0 bg-indigo-500/30 transition-all duration-[400ms] ease-linear ${isPressing ? 'h-full' : 'h-0'}`} 
-                    />
-                 )}
-                 <span className="relative z-10">{k}</span>
+                 {k}
                </button>
              );
            })}

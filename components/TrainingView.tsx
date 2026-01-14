@@ -34,30 +34,6 @@ const TrainingView: React.FC<TrainingViewProps> = ({
   // Use internal index to visually handle updates, but trust props for initial load
   const [internalIndex, setInternalIndex] = useState(initialIndex);
 
-  // Long Press Logic for Hard Mode
-  const [pressingKey, setPressingKey] = useState<string | null>(null);
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-
-  const handlePressStart = (k: string) => {
-     if (difficulty !== 'HARD') return; // Handled by onClick
-     
-     setPressingKey(k);
-     longPressTimer.current = setTimeout(() => {
-        handleKeyPress(k);
-        setPressingKey(null);
-        if (navigator.vibrate) navigator.vibrate(20); 
-     }, 400); // 400ms hold required
-  };
-
-  const handlePressEnd = () => {
-     if (difficulty !== 'HARD') return;
-     if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current);
-        longPressTimer.current = null;
-     }
-     setPressingKey(null);
-  };
-
   // Sync when initialIndex changes (e.g. from restore or Hard reset)
   useEffect(() => {
     setInternalIndex(initialIndex);
@@ -99,14 +75,8 @@ const TrainingView: React.FC<TrainingViewProps> = ({
   }, [difficulty, currentWord, inputValue, validAlternatives, prefixLength]);
 
 
-  const handleKeyPress = (key: string) => {
-    if (!currentWord || feedback.type === 'success') return;
-
-    const newVal = inputValue + key;
-    setInputValue(newVal);
-
-    if (newVal.length === targetSuffix.length) {
-      const fullAttempt = prefix + newVal;
+  const validateInput = (fullInput: string) => {
+      const fullAttempt = prefix + fullInput;
       
       if (fullAttempt === currentWord.w) {
         setFeedback({ msg: 'Correct!', type: 'success' });
@@ -144,6 +114,28 @@ const TrainingView: React.FC<TrainingViewProps> = ({
            }
         }
       }
+  };
+
+  const handleKeyPress = (key: string) => {
+    if (!currentWord || feedback.type === 'success') return;
+    
+    // Check if we are already full length
+    if (inputValue.length >= targetSuffix.length) return;
+
+    const newVal = inputValue + key;
+    setInputValue(newVal);
+
+    // Auto-validate ONLY if NOT Hard Mode
+    if (difficulty !== 'HARD' && newVal.length === targetSuffix.length) {
+       validateInput(newVal);
+    }
+  };
+
+  const handleEnter = () => {
+    if (inputValue.length === targetSuffix.length) {
+       validateInput(inputValue);
+    } else {
+       // Optional: Shake or warn if not enough letters?
     }
   };
 
@@ -223,15 +215,35 @@ const TrainingView: React.FC<TrainingViewProps> = ({
       {/* Keyboard with Easy Mode Highlights */}
       <div className="bg-white p-2 pb-4 border-t border-slate-100 shrink-0">
         {/* DEL Button Row - Explicit spacing between word display and keyboard */}
-        <div className="flex justify-end px-2 mb-2">
-           <button 
-             onClick={handleDelete}
-             className="bg-slate-100 border border-slate-200 shadow-sm rounded-full px-4 py-2 text-slate-500 font-bold text-xs hover:bg-slate-200 active:scale-95 flex items-center gap-1"
-             aria-label="Delete"
-           >
-             <Delete size={16} />
-             <span>DEL</span>
-           </button>
+        <div className="flex justify-between px-2 mb-2">
+           {/* DELETE BUTTON (Left Aligned or Right?) - User asked for space above. Keeping right aligned as before unless we want split */}
+           <div className="flex-1"></div> {/* Spacer to push buttons to right, or we can put ENTER on Left */}
+           
+           <div className="flex gap-2">
+               <button 
+                 onClick={handleDelete}
+                 className="bg-slate-100 border border-slate-200 shadow-sm rounded-full px-4 py-2 text-slate-500 font-bold text-xs hover:bg-slate-200 active:scale-95 flex items-center gap-1"
+                 aria-label="Delete"
+               >
+                 <Delete size={16} />
+                 <span>DEL</span>
+               </button>
+
+               {difficulty === 'HARD' && (
+                   <button 
+                     onClick={handleEnter}
+                     disabled={inputValue.length !== targetSuffix.length}
+                     className={`border shadow-sm rounded-full px-4 py-2 font-bold text-xs flex items-center gap-1 transition-all ${
+                        inputValue.length === targetSuffix.length 
+                          ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-200' 
+                          : 'bg-slate-50 border-slate-200 text-slate-300'
+                     }`}
+                     aria-label="Enter"
+                   >
+                     <span>ENTER</span>
+                   </button>
+               )}
+           </div>
         </div>
 
         <div className="max-w-md mx-auto flex flex-col gap-1">
@@ -243,32 +255,17 @@ const TrainingView: React.FC<TrainingViewProps> = ({
             <div key={i} className="flex justify-center gap-0.5">
               {row.map(k => {
                 const isPossible = highlightedKeys.has(k);
-                const isPressing = pressingKey === k;
                 return (
                   <button
                     key={k}
-                    onClick={() => difficulty !== 'HARD' && handleKeyPress(k)}
-                    onPointerDown={(e) => {
-                      // Do NOT release capture to ensure we track the hold
-                      handlePressStart(k);
-                    }}
-                    onPointerUp={handlePressEnd}
-                    onPointerLeave={handlePressEnd}
-                    onPointerCancel={handlePressEnd}
+                    onClick={() => handleKeyPress(k)}
                     onContextMenu={(e) => e.preventDefault()}
                     className={`aspect-[3/4] rounded font-bold text-base transition-all flex-1 max-w-[40px] select-none touch-manipulation relative overflow-hidden ${
-                       isPressing ? 'scale-90 bg-indigo-200 border-indigo-400 text-indigo-800' :
                        isPossible 
                          ? 'bg-yellow-100 border border-yellow-300 text-yellow-800 shadow-sm hover:bg-yellow-200' 
                          : 'bg-slate-50 border border-slate-200 text-slate-600 active:bg-slate-200'
                     }`}
                   >
-                    {/* Visual Progress Fill for Hard Mode */}
-                    {difficulty === 'HARD' && (
-                       <div 
-                         className={`absolute bottom-0 left-0 right-0 bg-indigo-500/30 transition-all duration-[400ms] ease-linear ${isPressing ? 'h-full' : 'h-0'}`} 
-                       />
-                    )}
                     <span className="relative z-10">{k}</span>
                   </button>
                 );

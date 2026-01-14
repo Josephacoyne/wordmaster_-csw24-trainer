@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { WordEntry, Difficulty } from '../types';
 import { ArrowLeft, Grid, Delete, FastForward } from 'lucide-react';
 
@@ -33,6 +33,30 @@ const TrainingView: React.FC<TrainingViewProps> = ({
   
   // Use internal index to visually handle updates, but trust props for initial load
   const [internalIndex, setInternalIndex] = useState(initialIndex);
+
+  // Long Press Logic for Hard Mode
+  const [pressingKey, setPressingKey] = useState<string | null>(null);
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const handlePressStart = (k: string) => {
+     if (difficulty !== 'HARD') return; // Handled by onClick
+     
+     setPressingKey(k);
+     longPressTimer.current = setTimeout(() => {
+        handleKeyPress(k);
+        setPressingKey(null);
+        if (navigator.vibrate) navigator.vibrate(20); 
+     }, 400); // 400ms hold required
+  };
+
+  const handlePressEnd = () => {
+     if (difficulty !== 'HARD') return;
+     if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+     }
+     setPressingKey(null);
+  };
 
   // Sync when initialIndex changes (e.g. from restore or Hard reset)
   useEffect(() => {
@@ -219,17 +243,33 @@ const TrainingView: React.FC<TrainingViewProps> = ({
             <div key={i} className="flex justify-center gap-0.5">
               {row.map(k => {
                 const isPossible = highlightedKeys.has(k);
+                const isPressing = pressingKey === k;
                 return (
                   <button
                     key={k}
-                    onClick={() => handleKeyPress(k)}
-                    className={`aspect-[3/4] rounded font-bold text-base transition-all flex-1 max-w-[40px] ${
+                    onClick={() => difficulty !== 'HARD' && handleKeyPress(k)}
+                    onPointerDown={(e) => {
+                      // Do NOT release capture to ensure we track the hold
+                      handlePressStart(k);
+                    }}
+                    onPointerUp={handlePressEnd}
+                    onPointerLeave={handlePressEnd}
+                    onPointerCancel={handlePressEnd}
+                    onContextMenu={(e) => e.preventDefault()}
+                    className={`aspect-[3/4] rounded font-bold text-base transition-all flex-1 max-w-[40px] select-none touch-manipulation relative overflow-hidden ${
+                       isPressing ? 'scale-90 bg-indigo-200 border-indigo-400 text-indigo-800' :
                        isPossible 
                          ? 'bg-yellow-100 border border-yellow-300 text-yellow-800 shadow-sm hover:bg-yellow-200' 
                          : 'bg-slate-50 border border-slate-200 text-slate-600 active:bg-slate-200'
                     }`}
                   >
-                    {k}
+                    {/* Visual Progress Fill for Hard Mode */}
+                    {difficulty === 'HARD' && (
+                       <div 
+                         className={`absolute bottom-0 left-0 right-0 bg-indigo-500/30 transition-all duration-[400ms] ease-linear ${isPressing ? 'h-full' : 'h-0'}`} 
+                       />
+                    )}
+                    <span className="relative z-10">{k}</span>
                   </button>
                 );
               })}

@@ -31,6 +31,30 @@ const HookView: React.FC<HookViewProps> = ({
 }) => {
   const [qIndex, setQIndex] = useState(0);
   const [feedback, setFeedback] = useState<{ msg: string; type: 'neutral' | 'success' | 'error' }>({ msg: '', type: 'neutral' });
+
+  // Long Press Logic for Hard Mode
+  const [pressingKey, setPressingKey] = useState<string | null>(null);
+  const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
+
+  const handlePressStart = (k: string) => {
+     if (difficulty !== 'HARD') return; // Handled by onClick
+     
+     setPressingKey(k);
+     longPressTimer.current = setTimeout(() => {
+        handlePress(k);
+        setPressingKey(null);
+        if (navigator.vibrate) navigator.vibrate(15); 
+     }, 400); // 400ms hold required
+  };
+
+  const handlePressEnd = () => {
+     if (difficulty !== 'HARD') return;
+     if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+     }
+     setPressingKey(null);
+  };
   
   // Logic: Flatten hooks
   const questions = useMemo<HookQuestion[]>(() => {
@@ -153,18 +177,33 @@ const HookView: React.FC<HookViewProps> = ({
         <div className="max-w-md mx-auto grid grid-cols-9 gap-0.5">
            {keyboardKeys.map(k => {
              const isValidOption = difficulty === 'EASY' && validForCurrentSide.has(k);
+             const isPressing = pressingKey === k;
              
              return (
                <button
                  key={k}
-                 onClick={() => handlePress(k)}
-                 className={`aspect-[3/4] rounded-md font-bold text-lg transition-all ${
+                 onClick={() => difficulty !== 'HARD' && handlePress(k)}
+                 onPointerDown={(e) => {
+                   // Do NOT release capture to ensure we track the hold
+                   handlePressStart(k);
+                 }}
+                 onPointerUp={handlePressEnd}
+                 onPointerLeave={handlePressEnd}
+                 onPointerCancel={handlePressEnd}
+                 onContextMenu={(e) => e.preventDefault()}
+                 className={`aspect-[3/4] rounded-md font-bold text-lg transition-all select-none touch-manipulation relative overflow-hidden ${
+                    isPressing ? 'scale-90 bg-indigo-200 border-indigo-400 text-indigo-800' :
                     isValidOption 
                     ? 'bg-yellow-100 border border-yellow-300 text-yellow-800 shadow-sm hover:bg-yellow-200'
                     : 'bg-slate-50 border border-slate-200 text-slate-600 active:bg-slate-200'
                  }`}
                >
-                 {k}
+                 {difficulty === 'HARD' && (
+                    <div 
+                      className={`absolute bottom-0 left-0 right-0 bg-indigo-500/30 transition-all duration-[400ms] ease-linear ${isPressing ? 'h-full' : 'h-0'}`} 
+                    />
+                 )}
+                 <span className="relative z-10">{k}</span>
                </button>
              );
            })}

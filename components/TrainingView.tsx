@@ -156,23 +156,26 @@ const TrainingView: React.FC<TrainingViewProps> = ({
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center p-2 min-h-0">
-         <div className="bg-white rounded-[1.5rem] p-3 shadow-xl w-full max-w-xs relative overflow-hidden border-2 border-slate-100 flex flex-col items-center justify-center max-h-full">
-            <div className="text-center mb-4 mt-2 min-h-[3rem] flex items-center justify-center max-h-[30%] overflow-y-auto no-scrollbar">
-               <p className="text-lg font-medium text-slate-700 leading-snug px-2">{currentWord.d}</p>
+         <div className="bg-white rounded-[1.5rem] p-3 shadow-xl w-full max-w-sm relative overflow-hidden border-2 border-slate-100 flex flex-col items-center justify-center max-h-full">
+            <div className="text-center mb-4 mt-2 min-h-[3rem] flex items-center justify-center max-h-[35%] overflow-y-auto no-scrollbar">
+               <p className="text-xl font-medium text-slate-700 leading-snug px-2">{currentWord.d}</p>
             </div>
 
             <div className="flex justify-center gap-1 mb-4 shrink-0">
+               {/* Prefix as Dark Blocks (Master Hook Style) */}
                {prefix.split('').map((char, i) => (
-                  <div key={`p-${i}`} className="w-10 h-12 bg-slate-100 rounded-lg flex items-center justify-center text-2xl font-black text-slate-400 select-none">
+                  <div key={`p-${i}`} className="w-12 h-16 bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-black text-white select-none shadow-md">
                     {char}
                   </div>
                ))}
+               
+               {/* Input as Bordered Blocks (Hook Style) */}
                {targetSuffix.split('').map((_, i) => (
-                  <div key={`i-${i}`} className={`w-10 h-12 border-b-4 flex items-center justify-center text-2xl font-black transition-colors ${
+                  <div key={`i-${i}`} className={`w-12 h-16 border-b-4 rounded-xl flex items-center justify-center text-4xl font-black transition-colors ${
                      feedback.type === 'error' ? 'border-rose-400 text-rose-500 bg-rose-50' :
                      feedback.type === 'warning' ? 'border-amber-400 text-amber-500 bg-amber-50' :
                      feedback.type === 'success' ? 'border-emerald-400 text-emerald-500 bg-emerald-50' :
-                     'border-indigo-200 text-slate-800'
+                     'border-indigo-300 text-indigo-600 bg-indigo-50'
                   }`}>
                     {inputValue[i] || ''}
                   </div>
@@ -194,10 +197,10 @@ const TrainingView: React.FC<TrainingViewProps> = ({
         {/* DEL Button positioned absolute top-right of keyboard area */}
         <button 
           onClick={handleDelete}
-          className="absolute top-[-10px] right-2 bg-white border border-slate-200 shadow-sm rounded-full p-2 text-slate-500 hover:text-rose-500 active:bg-slate-50 z-20"
+          className="absolute top-[-15px] right-4 bg-white border-2 border-slate-200 shadow-md rounded-full p-2.5 text-slate-500 hover:text-rose-500 active:bg-slate-50 z-20 transition-all hover:scale-105 active:scale-95"
           aria-label="Delete"
         >
-          <Delete size={18} />
+          <Delete size={20} />
         </button>
 
         <div className="max-w-md mx-auto flex flex-col gap-1">

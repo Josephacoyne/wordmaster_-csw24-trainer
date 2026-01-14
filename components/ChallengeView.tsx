@@ -130,9 +130,9 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 relative overflow-hidden">
+    <div className="fixed inset-0 flex flex-col h-[100svh] w-full bg-slate-50 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 z-10">
+      <div className="flex items-center justify-between p-4 z-10 shrink-0">
         <button onClick={onExit} className="p-2 bg-white/50 backdrop-blur rounded-full text-slate-500 hover:bg-white transition-all">
           <X size={20} />
         </button>
@@ -147,8 +147,8 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
       </div>
 
       {/* Card */}
-      <div className="flex-1 flex flex-col items-center justify-center p-4 relative">
-        <div className={`w-full aspect-[4/3] max-w-xs bg-white rounded-[2rem] shadow-2xl flex items-center justify-center border-4 transition-all duration-300 ${
+      <div className="flex-1 flex flex-col items-center justify-center p-4 relative min-h-0">
+        <div className={`w-full aspect-[4/3] max-w-xs bg-white rounded-[2rem] shadow-2xl flex items-center justify-center border-4 transition-all duration-300 max-h-full ${
            result === 'CORRECT' ? 'border-emerald-400 scale-105' :
            result === 'WRONG' ? 'border-rose-400 rotate-1' : 'border-white'
         }`}>
@@ -157,14 +157,14 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
            </span>
         </div>
 
-        <div className="h-8 flex items-center justify-center font-black text-lg tracking-widest uppercase mt-4">
+        <div className="h-8 flex items-center justify-center font-black text-lg tracking-widest uppercase mt-4 shrink-0">
            {result === 'CORRECT' && <span className="text-emerald-500 animate-in fade-in slide-in-from-bottom-2">Correct!</span>}
            {result === 'WRONG' && <span className="text-rose-500 animate-in fade-in slide-in-from-bottom-2">Wrong!</span>}
         </div>
       </div>
 
       {/* Controls */}
-      <div className="p-4 pb-8 grid grid-cols-2 gap-3">
+      <div className="p-4 pb-8 grid grid-cols-2 gap-3 shrink-0">
          <button 
            onClick={() => handleGuess(false)}
            disabled={!!result}

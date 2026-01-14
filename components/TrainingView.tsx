@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { WordEntry, Difficulty } from '../types';
-import { ArrowLeft, Grid, Delete } from 'lucide-react';
+import { ArrowLeft, Grid, Delete, FastForward } from 'lucide-react';
 
 interface TrainingViewProps {
   pool: WordEntry[];
@@ -142,16 +142,20 @@ const TrainingView: React.FC<TrainingViewProps> = ({
 
   return (
     <div className="fixed inset-0 flex flex-col h-[100svh] w-full bg-slate-50 overflow-hidden">
-      <div className="flex items-center justify-between p-3 bg-white shadow-sm z-10 shrink-0 h-14">
+      <div className="flex items-center justify-between p-3 bg-white shadow-sm z-10 shrink-0 h-16">
          <button onClick={onExit} className="p-2 text-slate-400 hover:text-slate-600">
-           <ArrowLeft size={20} />
+           <ArrowLeft size={24} />
          </button>
          <div className="flex flex-col items-center">
-            <span className="text-[9px] font-bold text-slate-400">TRAINING {currentLetter}</span>
-            <span className="text-[10px] font-black text-indigo-600">{internalIndex + 1} / {pool.length}</span>
+            <span className="text-xs font-bold text-slate-400">TRAINING {currentLetter}</span>
+            <span className="text-sm font-black text-indigo-600">{internalIndex + 1} / {pool.length}</span>
          </div>
-         <button onClick={() => setShowLetterSkip(true)} className="p-2 text-indigo-500 bg-indigo-50 rounded-lg">
-           <Grid size={20} />
+         <button 
+           onClick={() => setShowLetterSkip(true)} 
+           className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg flex items-center gap-1 font-bold text-sm hover:bg-indigo-100 active:scale-95 transition-all"
+         >
+           <span>SKIP</span>
+           <FastForward size={16} fill="currentColor" />
          </button>
       </div>
 

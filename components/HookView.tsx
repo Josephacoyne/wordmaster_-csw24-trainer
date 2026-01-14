@@ -92,18 +92,20 @@ const HookView: React.FC<HookViewProps> = ({
 
   return (
     <div className="fixed inset-0 flex flex-col h-[100svh] w-full bg-slate-50 overflow-hidden">
-       <div className="flex items-center justify-between p-3 bg-white shadow-sm z-10 shrink-0 h-14">
+       <div className="flex items-center justify-between p-3 bg-white shadow-sm z-10 shrink-0 h-16">
          <button onClick={onExit} className="p-2 text-slate-400 hover:text-slate-600">
-           <ArrowLeft size={20} />
+           <ArrowLeft size={24} />
          </button>
-         <div className="font-black text-slate-400 text-[10px] tracking-widest uppercase">
-           Hook Mastery {currentIndex + 1}/{totalCount}
+         <div className="flex flex-col items-center">
+           <span className="text-sm font-bold text-slate-400 uppercase tracking-wide">Hook Mastery</span>
+           <span className="text-lg font-black text-indigo-600">{currentIndex + 1} / {totalCount}</span>
          </div>
-         <div className="w-8" />
+         {/* Placeholder for symmetry or skip button if needed, but Hook mode has auto-advance */}
+         <div className="w-12" />
        </div>
 
        <div className="flex-1 flex flex-col items-center justify-center p-2 min-h-0">
-          <div className="bg-white rounded-[1.5rem] p-3 shadow-xl w-full max-w-sm relative overflow-hidden border-2 border-slate-100 flex flex-col items-center justify-center max-h-full">
+          <div className="bg-white rounded-[1.5rem] p-3 shadow-xl w-full max-w-xs relative overflow-hidden border-2 border-slate-100 flex flex-col items-center justify-center max-h-full">
              
              <div className="absolute top-3 font-black text-[9px] text-indigo-300 tracking-widest uppercase bg-indigo-50 px-2 py-0.5 rounded-full">
                 {currentQ.type} HOOK

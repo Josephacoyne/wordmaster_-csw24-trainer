@@ -15,6 +15,23 @@ interface TrainingViewProps {
   onExit: () => void;
 }
 
+const LetterButton = ({ k, highlightedKeys, onPress }: { k: string, highlightedKeys: Set<string>, onPress: (k: string) => void }) => {
+  const isPossible = highlightedKeys.has(k);
+  return (
+    <button
+      onClick={() => onPress(k)}
+      onContextMenu={(e) => e.preventDefault()}
+      className={`aspect-[3/4] rounded-lg font-bold text-xl transition-all flex items-center justify-center select-none touch-manipulation shadow-sm active:scale-95 active:shadow-inner ${
+         isPossible 
+           ? 'bg-yellow-100 border-2 border-yellow-300 text-yellow-800 hover:bg-yellow-200' 
+           : 'bg-white border-2 border-slate-200 text-slate-700 hover:bg-slate-50 active:bg-slate-100'
+      }`}
+    >
+      {k}
+    </button>
+  );
+};
+
 const TrainingView: React.FC<TrainingViewProps> = ({ 
   pool, 
   initialIndex,
@@ -214,64 +231,57 @@ const TrainingView: React.FC<TrainingViewProps> = ({
 
       {/* Keyboard with Easy Mode Highlights */}
       <div className="bg-white p-2 pb-4 border-t border-slate-100 shrink-0">
-        {/* DEL Button Row - Explicit spacing between word display and keyboard */}
-        <div className="flex justify-between px-2 mb-2">
-           {/* DELETE BUTTON (Left Aligned or Right?) - User asked for space above. Keeping right aligned as before unless we want split */}
-           <div className="flex-1"></div> {/* Spacer to push buttons to right, or we can put ENTER on Left */}
-           
-           <div className="flex gap-2">
-               <button 
-                 onClick={handleDelete}
-                 className="bg-slate-100 border border-slate-200 shadow-sm rounded-full px-4 py-2 text-slate-500 font-bold text-xs hover:bg-slate-200 active:scale-95 flex items-center gap-1"
-                 aria-label="Delete"
-               >
-                 <Delete size={16} />
-                 <span>DEL</span>
-               </button>
-
-               {difficulty === 'HARD' && (
-                   <button 
-                     onClick={handleEnter}
-                     disabled={inputValue.length !== targetSuffix.length}
-                     className={`border shadow-sm rounded-full px-4 py-2 font-bold text-xs flex items-center gap-1 transition-all ${
-                        inputValue.length === targetSuffix.length 
-                          ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-200' 
-                          : 'bg-slate-50 border-slate-200 text-slate-300'
-                     }`}
-                     aria-label="Enter"
-                   >
-                     <span>ENTER</span>
-                   </button>
-               )}
-           </div>
-        </div>
-
-        <div className="max-w-md mx-auto flex flex-col gap-1">
-          {[
-            ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
-            ['J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R'],
-            ['S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
-          ].map((row, i) => (
-            <div key={i} className="flex justify-center gap-0.5">
-              {row.map(k => {
-                const isPossible = highlightedKeys.has(k);
-                return (
-                  <button
-                    key={k}
-                    onClick={() => handleKeyPress(k)}
-                    onContextMenu={(e) => e.preventDefault()}
-                    className={`aspect-[3/4] rounded font-bold text-base transition-all flex-1 max-w-[40px] select-none touch-manipulation relative overflow-hidden ${
-                       isPossible 
-                         ? 'bg-yellow-100 border border-yellow-300 text-yellow-800 shadow-sm hover:bg-yellow-200' 
-                         : 'bg-slate-50 border border-slate-200 text-slate-600 active:bg-slate-200'
-                    }`}
-                  >
-                    <span className="relative z-10">{k}</span>
-                  </button>
-                );
-              })}
-            </div>
+        <div className="max-w-md mx-auto grid grid-cols-7 gap-1">
+          {/* Row 1: A-G */}
+          {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(k => (
+             <LetterButton key={k} k={k} highlightedKeys={highlightedKeys} onPress={handleKeyPress} />
           ))}
+
+          {/* Row 2: H-N */}
+          {['H', 'I', 'J', 'K', 'L', 'M', 'N'].map(k => (
+             <LetterButton key={k} k={k} highlightedKeys={highlightedKeys} onPress={handleKeyPress} />
+          ))}
+
+          {/* Row 3: O-U */}
+          {['O', 'P', 'Q', 'R', 'S', 'T', 'U'].map(k => (
+             <LetterButton key={k} k={k} highlightedKeys={highlightedKeys} onPress={handleKeyPress} />
+          ))}
+
+          {/* Row 4: V-Z + DEL + ENTER */}
+          {['V', 'W', 'X', 'Y', 'Z'].map(k => (
+             <LetterButton key={k} k={k} highlightedKeys={highlightedKeys} onPress={handleKeyPress} />
+          ))}
+
+          {/* DELETE BUTTON (Column 6 of Row 4) */}
+          <button 
+             onClick={handleDelete}
+             className={`rounded-lg bg-slate-100 border border-slate-200 text-slate-500 font-black text-xs hover:bg-slate-200 active:scale-95 flex flex-col items-center justify-center transition-all ${
+               difficulty !== 'HARD' ? 'col-span-2 aspect-auto' : 'aspect-[3/4]'
+             }`}
+             aria-label="Delete"
+           >
+             <Delete size={20} />
+             <span className="text-[10px] mt-0.5">DEL</span>
+           </button>
+
+           {/* ENTER BUTTON (Column 7 of Row 4 - Only in Hard Mode) */}
+           {difficulty === 'HARD' && (
+               <button 
+                 onClick={handleEnter}
+                 disabled={inputValue.length !== targetSuffix.length}
+                 className={`aspect-[3/4] rounded-lg border font-black text-xs flex flex-col items-center justify-center transition-all ${
+                    inputValue.length === targetSuffix.length 
+                      ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-md shadow-indigo-200' 
+                      : 'bg-slate-50 border-slate-200 text-slate-300'
+                 }`}
+                 aria-label="Enter"
+               >
+                 <div className="w-5 h-5 flex items-center justify-center border-2 border-current rounded-md mb-0.5">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 10 4 15 9 20"></polyline><path d="M20 4v7a4 4 0 0 1-4 4H4"></path></svg>
+                 </div>
+                 <span className="text-[10px]">ENT</span>
+               </button>
+           )}
         </div>
       </div>
       

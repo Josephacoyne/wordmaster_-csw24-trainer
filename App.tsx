@@ -93,6 +93,34 @@ const App: React.FC = () => {
         } catch (e) { console.error("Failed to load progress", e); }
     }
   }, []);
+
+  // --- PERSISTENCE: SAVE EFFECTS ---
+  useEffect(() => {
+    const data = {
+      EASY: Array.from(masteredWords.EASY),
+      MEDIUM: Array.from(masteredWords.MEDIUM),
+      HARD: Array.from(masteredWords.HARD)
+    };
+    localStorage.setItem('endcap_mastery_words', JSON.stringify(data));
+  }, [masteredWords]);
+
+  useEffect(() => {
+    const data = {
+      EASY: Array.from(hookMastery.EASY),
+      MEDIUM: Array.from(hookMastery.MEDIUM),
+      HARD: Array.from(hookMastery.HARD)
+    };
+    localStorage.setItem('endcap_mastery_hooks', JSON.stringify(data));
+  }, [hookMastery]);
+
+  useEffect(() => {
+    localStorage.setItem('endcap_highscore', challengeHighScore.toString());
+  }, [challengeHighScore]);
+
+  useEffect(() => {
+    localStorage.setItem('endcap_training_progress', JSON.stringify(savedTrainingProgress));
+  }, [savedTrainingProgress]);
+
   // --- MODE SWITCHING EFFECT ---
   // When difficulty changes while in Training, update the position immediately
   useEffect(() => {

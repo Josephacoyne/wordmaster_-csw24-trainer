@@ -92,7 +92,7 @@ const HookView: React.FC<HookViewProps> = ({
 
   return (
     <div className="fixed inset-0 flex flex-col h-[100svh] w-full bg-slate-50 overflow-hidden">
-       <div className="flex items-center justify-between p-3 bg-white shadow-sm z-10 shrink-0">
+       <div className="flex items-center justify-between p-3 bg-white shadow-sm z-10 shrink-0 h-14">
          <button onClick={onExit} className="p-2 text-slate-400 hover:text-slate-600">
            <ArrowLeft size={20} />
          </button>
@@ -103,21 +103,21 @@ const HookView: React.FC<HookViewProps> = ({
        </div>
 
        <div className="flex-1 flex flex-col items-center justify-center p-2 min-h-0">
-          <div className="bg-white rounded-[1.5rem] p-4 shadow-xl w-full max-w-sm relative overflow-hidden border-2 border-slate-100 flex flex-col items-center max-h-full">
+          <div className="bg-white rounded-[1.5rem] p-3 shadow-xl w-full max-w-xs relative overflow-hidden border-2 border-slate-100 flex flex-col items-center justify-center max-h-full">
              
-             <div className="absolute top-3 font-black text-[9px] text-indigo-300 tracking-widest uppercase bg-indigo-50 px-2 py-0.5 rounded-full">
+             <div className="absolute top-2 font-black text-[9px] text-indigo-300 tracking-widest uppercase bg-indigo-50 px-2 py-0.5 rounded-full">
                 {currentQ.type} HOOK
              </div>
 
-             <div className="mt-5 mb-2 text-center flex-1 flex items-center justify-center min-h-[2.5rem]">
-                <p className="text-base font-medium text-slate-800 leading-snug px-2 line-clamp-3">
+             <div className="mt-6 mb-2 text-center flex-1 flex items-center justify-center max-h-[30%] overflow-hidden">
+                <p className="text-sm font-medium text-slate-800 leading-snug px-2 line-clamp-3">
                   {currentQ.definition || "(No definition available)"}
                 </p>
              </div>
 
-             <div className="flex items-center justify-center gap-1 mb-4 shrink-0">
+             <div className="flex items-center justify-center gap-1 mb-2 shrink-0">
                 {currentQ.type === 'FRONT' && (
-                  <div className={`w-12 h-14 rounded-xl border-b-4 flex items-center justify-center text-3xl font-black transition-all ${
+                  <div className={`w-10 h-12 rounded-lg border-b-4 flex items-center justify-center text-2xl font-black transition-all ${
                      feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 
                      feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
                      'border-indigo-300 text-indigo-600 bg-indigo-50'
@@ -126,12 +126,12 @@ const HookView: React.FC<HookViewProps> = ({
                   </div>
                 )}
                 
-                <div className="h-14 px-4 bg-slate-800 rounded-xl flex items-center justify-center text-3xl font-black text-white shadow-lg tracking-widest">
+                <div className="h-12 px-4 bg-slate-800 rounded-lg flex items-center justify-center text-2xl font-black text-white shadow-lg tracking-widest">
                    {data.word.w}
                 </div>
 
                 {currentQ.type === 'BACK' && (
-                  <div className={`w-12 h-14 rounded-xl border-b-4 flex items-center justify-center text-3xl font-black transition-all ${
+                  <div className={`w-10 h-12 rounded-lg border-b-4 flex items-center justify-center text-2xl font-black transition-all ${
                      feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 
                      feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
                      'border-indigo-300 text-indigo-600 bg-indigo-50'
@@ -141,14 +141,14 @@ const HookView: React.FC<HookViewProps> = ({
                 )}
              </div>
              
-             <div className="w-full bg-slate-100 h-1.5 rounded-full mt-1 overflow-hidden shrink-0">
+             <div className="w-full bg-slate-100 h-1 rounded-full mt-1 overflow-hidden shrink-0">
                 <div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${((qIndex) / questions.length) * 100}%` }} />
              </div>
           </div>
        </div>
 
-       <div className="bg-white p-2 pb-6 border-t border-slate-100 shrink-0">
-        <div className="max-w-md mx-auto grid grid-cols-9 gap-1">
+       <div className="bg-white p-2 pb-4 border-t border-slate-100 shrink-0">
+        <div className="max-w-md mx-auto grid grid-cols-9 gap-0.5">
            {keyboardKeys.map(k => {
              const isValidOption = difficulty === 'EASY' && validForCurrentSide.has(k);
              
@@ -156,7 +156,7 @@ const HookView: React.FC<HookViewProps> = ({
                <button
                  key={k}
                  onClick={() => handlePress(k)}
-                 className={`aspect-[3/4] rounded-md font-bold text-lg transition-all ${
+                 className={`aspect-[3/4] rounded font-bold text-base transition-all ${
                     isValidOption 
                     ? 'bg-yellow-100 border border-yellow-300 text-yellow-800 shadow-sm hover:bg-yellow-200'
                     : 'bg-slate-50 border border-slate-200 text-slate-600 active:bg-slate-200'

@@ -147,8 +147,8 @@ const TrainingView: React.FC<TrainingViewProps> = ({
            <ArrowLeft size={24} />
          </button>
          <div className="flex flex-col items-center">
-            <span className="text-xs font-bold text-slate-400">TRAINING {currentLetter}</span>
-            <span className="text-sm font-black text-indigo-600">{internalIndex + 1} / {pool.length}</span>
+            <span className="text-sm font-bold text-slate-400 uppercase tracking-wide">TRAINING {currentLetter}</span>
+            <span className="text-lg font-black text-indigo-600">{internalIndex + 1} / {pool.length}</span>
          </div>
          <button 
            onClick={() => setShowLetterSkip(true)} 

@@ -98,30 +98,30 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
 
   if (!isPlaying) {
     return (
-      <div className="flex flex-col h-full bg-slate-50 p-6">
-        <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col h-full bg-slate-50 p-4">
+        <div className="flex items-center justify-between mb-4">
            <button onClick={onExit} className="p-2 bg-white rounded-full shadow-sm text-slate-400">
-             <ArrowLeft size={24} />
+             <ArrowLeft size={20} />
            </button>
-           <h2 className="font-black text-xl text-slate-700">CHALLENGE SETUP</h2>
+           <h2 className="font-black text-lg text-slate-700">CHALLENGE SETUP</h2>
            <div className="w-10" /> 
         </div>
 
-        <div className="flex-1 flex flex-col justify-center gap-6">
-          <div className="text-center mb-4">
-            <Trophy size={48} className="mx-auto text-yellow-500 mb-4" />
-            <h3 className="text-2xl font-black text-slate-800">Choose your Arena</h3>
-            <p className="text-slate-500 font-medium">Select word length to challenge</p>
+        <div className="flex-1 flex flex-col justify-center gap-4">
+          <div className="text-center mb-2">
+            <Trophy size={40} className="mx-auto text-yellow-500 mb-2" />
+            <h3 className="text-xl font-black text-slate-800">Choose your Arena</h3>
+            <p className="text-slate-500 font-medium text-sm">Select word length to challenge</p>
           </div>
 
           {[2, 3, 4].map((len) => (
              <button
                key={len}
                onClick={() => handleStart(len as WordLength)}
-               className="w-full py-6 bg-white border-2 border-slate-100 rounded-2xl shadow-sm hover:border-indigo-500 hover:text-indigo-600 font-black text-2xl text-slate-700 transition-all flex items-center justify-between px-8"
+               className="w-full py-4 bg-white border-2 border-slate-100 rounded-xl shadow-sm hover:border-indigo-500 hover:text-indigo-600 font-black text-xl text-slate-700 transition-all flex items-center justify-between px-6"
              >
                <span>{len} Letters</span>
-               <ArrowLeft className="rotate-180" />
+               <ArrowLeft className="rotate-180" size={20} />
              </button>
           ))}
         </div>
@@ -132,50 +132,50 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   return (
     <div className="flex flex-col h-full bg-slate-50 relative overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-6 z-10">
+      <div className="flex items-center justify-between p-4 z-10">
         <button onClick={onExit} className="p-2 bg-white/50 backdrop-blur rounded-full text-slate-500 hover:bg-white transition-all">
-          <X size={24} />
+          <X size={20} />
         </button>
         <div className="flex flex-col items-center">
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Streak</span>
-          <div className="flex items-baseline gap-2">
-             <span className="text-3xl font-black text-indigo-600 leading-none">{streak}</span>
-             <span className="text-xs font-bold text-slate-300">Best: {Math.max(streak, topStreak)}</span>
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Streak</span>
+          <div className="flex items-baseline gap-1">
+             <span className="text-2xl font-black text-indigo-600 leading-none">{streak}</span>
+             <span className="text-[10px] font-bold text-slate-300">Best: {Math.max(streak, topStreak)}</span>
           </div>
         </div>
-        <div className="w-10" />
+        <div className="w-8" />
       </div>
 
       {/* Card */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 relative">
-        <div className={`w-full aspect-[4/3] max-w-sm bg-white rounded-[3rem] shadow-2xl flex items-center justify-center border-4 transition-all duration-300 ${
+      <div className="flex-1 flex flex-col items-center justify-center p-4 relative">
+        <div className={`w-full aspect-[4/3] max-w-xs bg-white rounded-[2rem] shadow-2xl flex items-center justify-center border-4 transition-all duration-300 ${
            result === 'CORRECT' ? 'border-emerald-400 scale-105' :
            result === 'WRONG' ? 'border-rose-400 rotate-1' : 'border-white'
         }`}>
-           <span className="text-6xl font-black text-slate-800 tracking-wider">
+           <span className="text-5xl font-black text-slate-800 tracking-wider">
              {currentWordStr}
            </span>
         </div>
 
-        <div className="h-12 flex items-center justify-center font-black text-xl tracking-widest uppercase mt-4">
+        <div className="h-8 flex items-center justify-center font-black text-lg tracking-widest uppercase mt-4">
            {result === 'CORRECT' && <span className="text-emerald-500 animate-in fade-in slide-in-from-bottom-2">Correct!</span>}
            {result === 'WRONG' && <span className="text-rose-500 animate-in fade-in slide-in-from-bottom-2">Wrong!</span>}
         </div>
       </div>
 
       {/* Controls */}
-      <div className="p-6 pb-12 grid grid-cols-2 gap-4">
+      <div className="p-4 pb-8 grid grid-cols-2 gap-3">
          <button 
            onClick={() => handleGuess(false)}
            disabled={!!result}
-           className="h-24 bg-rose-100 rounded-3xl text-rose-600 font-black text-xl border-b-4 border-rose-200 active:border-b-0 active:translate-y-1 transition-all"
+           className="h-20 bg-rose-100 rounded-2xl text-rose-600 font-black text-lg border-b-4 border-rose-200 active:border-b-0 active:translate-y-1 transition-all"
          >
            FAKE
          </button>
          <button 
            onClick={() => handleGuess(true)}
            disabled={!!result}
-           className="h-24 bg-emerald-100 rounded-3xl text-emerald-600 font-black text-xl border-b-4 border-emerald-200 active:border-b-0 active:translate-y-1 transition-all"
+           className="h-20 bg-emerald-100 rounded-2xl text-emerald-600 font-black text-lg border-b-4 border-emerald-200 active:border-b-0 active:translate-y-1 transition-all"
          >
            VALID
          </button>

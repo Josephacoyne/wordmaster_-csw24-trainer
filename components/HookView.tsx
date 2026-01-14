@@ -92,32 +92,32 @@ const HookView: React.FC<HookViewProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
-       <div className="flex items-center justify-between p-4 bg-white shadow-sm z-10">
+       <div className="flex items-center justify-between p-3 bg-white shadow-sm z-10">
          <button onClick={onExit} className="p-2 text-slate-400 hover:text-slate-600">
-           <ArrowLeft />
+           <ArrowLeft size={20} />
          </button>
-         <div className="font-black text-slate-400 text-xs tracking-widest uppercase">
+         <div className="font-black text-slate-400 text-[10px] tracking-widest uppercase">
            Hook Mastery {currentIndex + 1}/{totalCount}
          </div>
          <div className="w-8" />
        </div>
 
-       <div className="flex-1 flex flex-col items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] p-8 shadow-xl w-full max-w-sm relative overflow-hidden border-2 border-slate-100 flex flex-col items-center">
+       <div className="flex-1 flex flex-col items-center justify-center p-2">
+          <div className="bg-white rounded-[2rem] p-4 shadow-xl w-full max-w-sm relative overflow-hidden border-2 border-slate-100 flex flex-col items-center">
              
-             <div className="absolute top-4 font-black text-[10px] text-indigo-300 tracking-widest uppercase bg-indigo-50 px-3 py-1 rounded-full">
+             <div className="absolute top-3 font-black text-[9px] text-indigo-300 tracking-widest uppercase bg-indigo-50 px-2 py-0.5 rounded-full">
                 {currentQ.type} HOOK
              </div>
 
-             <div className="mt-8 mb-8 text-center min-h-[4rem] flex items-center justify-center">
-                <p className="text-xl font-medium text-slate-800 leading-snug">
+             <div className="mt-6 mb-4 text-center min-h-[3rem] flex items-center justify-center">
+                <p className="text-lg font-medium text-slate-800 leading-snug px-2">
                   {currentQ.definition || "(No definition available)"}
                 </p>
              </div>
 
-             <div className="flex items-center justify-center gap-1 mb-6">
+             <div className="flex items-center justify-center gap-1 mb-4">
                 {currentQ.type === 'FRONT' && (
-                  <div className={`w-14 h-20 rounded-xl border-b-4 flex items-center justify-center text-4xl font-black transition-all ${
+                  <div className={`w-12 h-16 rounded-xl border-b-4 flex items-center justify-center text-3xl font-black transition-all ${
                      feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 
                      feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
                      'border-indigo-300 text-indigo-600 bg-indigo-50'
@@ -126,12 +126,12 @@ const HookView: React.FC<HookViewProps> = ({
                   </div>
                 )}
                 
-                <div className="h-20 px-6 bg-slate-800 rounded-2xl flex items-center justify-center text-4xl font-black text-white shadow-lg tracking-widest">
+                <div className="h-16 px-4 bg-slate-800 rounded-xl flex items-center justify-center text-3xl font-black text-white shadow-lg tracking-widest">
                    {data.word.w}
                 </div>
 
                 {currentQ.type === 'BACK' && (
-                  <div className={`w-14 h-20 rounded-xl border-b-4 flex items-center justify-center text-4xl font-black transition-all ${
+                  <div className={`w-12 h-16 rounded-xl border-b-4 flex items-center justify-center text-3xl font-black transition-all ${
                      feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 
                      feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
                      'border-indigo-300 text-indigo-600 bg-indigo-50'
@@ -141,13 +141,13 @@ const HookView: React.FC<HookViewProps> = ({
                 )}
              </div>
              
-             <div className="w-full bg-slate-100 h-1.5 rounded-full mt-4 overflow-hidden">
+             <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
                 <div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${((qIndex) / questions.length) * 100}%` }} />
              </div>
           </div>
        </div>
 
-       <div className="bg-white p-2 pb-8 border-t border-slate-100">
+       <div className="bg-white p-2 pb-6 border-t border-slate-100">
         <div className="max-w-md mx-auto grid grid-cols-9 gap-1">
            {keyboardKeys.map(k => {
              // HIGHLIGHT LOGIC: Easy Mode shows valid options for this word side

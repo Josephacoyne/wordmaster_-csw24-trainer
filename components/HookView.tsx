@@ -47,7 +47,7 @@ const HookView: React.FC<HookViewProps> = ({
   onExit
 }) => {
   const [qIndex, setQIndex] = useState(0);
-  const [feedback, setFeedback] = useState<{ msg: string; type: 'neutral' | 'success' | 'error' }>({ msg: '', type: 'neutral' });
+  const [feedback, setFeedback] = useState<{ msg: string; type: 'neutral' | 'success' | 'error' | 'warning' }>({ msg: '', type: 'neutral' });
   const [selectedChar, setSelectedChar] = useState<string | null>(null);
 
   // Logic: Flatten hooks
@@ -75,16 +75,37 @@ const HookView: React.FC<HookViewProps> = ({
   }, [data]);
 
   const validateAnswer = (char: string) => {
+    // 1. Is it the correct answer for THIS definition?
     if (char === currentQ.char) {
       setFeedback({ msg: 'Correct!', type: 'success' });
       setTimeout(() => {
         advance();
       }, 500);
+      return;
+    } 
+
+    // 2. Is it a valid hook for this word, just not the one asked for?
+    const isAltValid = validForCurrentSide.has(char);
+
+    if (isAltValid) {
+        setFeedback({ msg: 'Valid hook, but wrong definition!', type: 'warning' });
+        // In Hard Mode, strict fail applies even for valid-but-wrong-def
+        if (difficulty === 'HARD') {
+            setFeedback({ msg: 'Strict Fail! Resetting...', type: 'error' });
+            setTimeout(() => strictFailReset(), 1000);
+        } else {
+            // Easy/Medium: Just clear after delay
+            setTimeout(() => {
+                setFeedback({ msg: '', type: 'neutral' });
+                setSelectedChar(null);
+            }, 1000);
+        }
     } else {
-      setFeedback({ msg: difficulty === 'HARD' ? 'Strict Fail! Resetting...' : 'Incorrect', type: 'error' });
+      // 3. Completely Invalid
+      setFeedback({ msg: difficulty === 'HARD' ? 'Perfect Score Needed! Resetting...' : 'Incorrect', type: 'error' });
       
       if (difficulty === 'HARD') {
-         setTimeout(() => onFail(), 1000);
+         setTimeout(() => strictFailReset(), 1000);
       } else {
          setTimeout(() => {
              setFeedback({ msg: '', type: 'neutral' });
@@ -92,6 +113,15 @@ const HookView: React.FC<HookViewProps> = ({
          }, 500);
       }
     }
+  };
+
+  const strictFailReset = () => {
+      // For Master Hooks "Resetting" means going back to the start of THIS WORD (qIndex 0)
+      // It does NOT mean failing the whole deck/mode unless you want that behavior.
+      // User said "resets to the begining of the word (not the whole thing just the word they're on)"
+      setFeedback({ msg: '', type: 'neutral' });
+      setSelectedChar(null);
+      setQIndex(0); 
   };
 
   const handlePress = (char: string) => {
@@ -158,11 +188,20 @@ const HookView: React.FC<HookViewProps> = ({
                 </p>
              </div>
 
+             <div className={`text-center font-bold h-6 transition-all shrink-0 ${
+                feedback.type === 'error' ? 'text-rose-500' :
+                feedback.type === 'warning' ? 'text-amber-500' :
+                feedback.type === 'success' ? 'text-emerald-500' : 'text-slate-300'
+            }`}>
+               {feedback.msg}
+            </div>
+
              <div className="flex items-center justify-center gap-1 mb-3 shrink-0">
                 {currentQ.type === 'FRONT' && (
                   <div className={`w-12 h-16 rounded-xl border-b-4 flex items-center justify-center text-4xl font-black transition-all ${
                      feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 
                      feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
+                     feedback.type === 'warning' ? 'border-amber-500 text-amber-600 bg-amber-50' :
                      'border-indigo-300 text-indigo-600 bg-indigo-50'
                   }`}>
                      {feedback.type === 'success' ? currentQ.char : (difficulty === 'HARD' ? selectedChar || '' : '')}
@@ -177,6 +216,7 @@ const HookView: React.FC<HookViewProps> = ({
                   <div className={`w-12 h-16 rounded-xl border-b-4 flex items-center justify-center text-4xl font-black transition-all ${
                      feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 
                      feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
+                     feedback.type === 'warning' ? 'border-amber-500 text-amber-600 bg-amber-50' :
                      'border-indigo-300 text-indigo-600 bg-indigo-50'
                   }`}>
                      {feedback.type === 'success' ? currentQ.char : (difficulty === 'HARD' ? selectedChar || '' : '')}

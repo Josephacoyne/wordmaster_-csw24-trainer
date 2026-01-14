@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { HookData, Difficulty } from '../types';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Delete } from 'lucide-react';
 
 interface HookViewProps {
   data: HookData;
@@ -19,6 +19,23 @@ type HookQuestion = {
   definition: string;
 };
 
+const LetterButton = ({ k, highlightedKeys, onPress }: { k: string, highlightedKeys: Set<string>, onPress: (k: string) => void }) => {
+  const isPossible = highlightedKeys.has(k);
+  return (
+    <button
+      onClick={() => onPress(k)}
+      onContextMenu={(e) => e.preventDefault()}
+      className={`aspect-[3/4] rounded-lg font-bold text-xl transition-all flex items-center justify-center select-none touch-manipulation shadow-sm active:scale-95 active:shadow-inner ${
+         isPossible 
+           ? 'bg-yellow-100 border-2 border-yellow-300 text-yellow-800 hover:bg-yellow-200' 
+           : 'bg-white border-2 border-slate-200 text-slate-700 hover:bg-slate-50 active:bg-slate-100'
+      }`}
+    >
+      {k}
+    </button>
+  );
+};
+
 const HookView: React.FC<HookViewProps> = ({ 
   data, 
   difficulty, 
@@ -31,31 +48,8 @@ const HookView: React.FC<HookViewProps> = ({
 }) => {
   const [qIndex, setQIndex] = useState(0);
   const [feedback, setFeedback] = useState<{ msg: string; type: 'neutral' | 'success' | 'error' }>({ msg: '', type: 'neutral' });
+  const [selectedChar, setSelectedChar] = useState<string | null>(null);
 
-  // Long Press Logic for Hard Mode
-  const [pressingKey, setPressingKey] = useState<string | null>(null);
-  const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
-
-  const handlePressStart = (k: string) => {
-     if (difficulty !== 'HARD') return; // Handled by onClick
-     
-     setPressingKey(k);
-     longPressTimer.current = setTimeout(() => {
-        handlePress(k);
-        setPressingKey(null);
-        if (navigator.vibrate) navigator.vibrate(15); 
-     }, 400); // 400ms hold required
-  };
-
-  const handlePressEnd = () => {
-     if (difficulty !== 'HARD') return;
-     if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current);
-        longPressTimer.current = null;
-     }
-     setPressingKey(null);
-  };
-  
   // Logic: Flatten hooks
   const questions = useMemo<HookQuestion[]>(() => {
     if (!data) return [];
@@ -77,11 +71,10 @@ const HookView: React.FC<HookViewProps> = ({
   useEffect(() => {
     setQIndex(0);
     setFeedback({ msg: '', type: 'neutral' });
+    setSelectedChar(null);
   }, [data]);
 
-  const handlePress = (char: string) => {
-    if (!currentQ || feedback.type === 'success') return;
-
+  const validateAnswer = (char: string) => {
     if (char === currentQ.char) {
       setFeedback({ msg: 'Correct!', type: 'success' });
       setTimeout(() => {
@@ -93,13 +86,39 @@ const HookView: React.FC<HookViewProps> = ({
       if (difficulty === 'HARD') {
          setTimeout(() => onFail(), 1000);
       } else {
-         setTimeout(() => setFeedback({ msg: '', type: 'neutral' }), 500);
+         setTimeout(() => {
+             setFeedback({ msg: '', type: 'neutral' });
+             setSelectedChar(null);
+         }, 500);
       }
     }
   };
 
+  const handlePress = (char: string) => {
+    if (!currentQ || feedback.type === 'success') return;
+    
+    // In Hard Mode, select the char but don't validate yet
+    if (difficulty === 'HARD') {
+        setSelectedChar(char);
+    } else {
+        // Easy/Medium: validate immediately
+        validateAnswer(char);
+    }
+  };
+
+  const handleEnter = () => {
+      if (selectedChar) {
+          validateAnswer(selectedChar);
+      }
+  };
+
+  const handleDelete = () => {
+      setSelectedChar(null);
+  };
+
   const advance = () => {
     setFeedback({ msg: '', type: 'neutral' });
+    setSelectedChar(null);
     if (qIndex < questions.length - 1) {
       setQIndex(prev => prev + 1);
     } else {
@@ -111,8 +130,6 @@ const HookView: React.FC<HookViewProps> = ({
   if (!currentQ && questions.length > 0) return <div>Loading...</div>;
   // Auto-skip if empty
   if (questions.length === 0 && data) { setTimeout(onNext, 100); return <div>No Hooks</div>; }
-
-  const keyboardKeys = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('');
 
   return (
     <div className="fixed inset-0 flex flex-col h-[100svh] w-full bg-slate-50 overflow-hidden">
@@ -148,7 +165,7 @@ const HookView: React.FC<HookViewProps> = ({
                      feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
                      'border-indigo-300 text-indigo-600 bg-indigo-50'
                   }`}>
-                     {feedback.type === 'success' ? currentQ.char : ''}
+                     {feedback.type === 'success' ? currentQ.char : (difficulty === 'HARD' ? selectedChar || '' : '')}
                   </div>
                 )}
                 
@@ -162,7 +179,7 @@ const HookView: React.FC<HookViewProps> = ({
                      feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
                      'border-indigo-300 text-indigo-600 bg-indigo-50'
                   }`}>
-                     {feedback.type === 'success' ? currentQ.char : ''}
+                     {feedback.type === 'success' ? currentQ.char : (difficulty === 'HARD' ? selectedChar || '' : '')}
                   </div>
                 )}
              </div>
@@ -174,37 +191,62 @@ const HookView: React.FC<HookViewProps> = ({
        </div>
 
        <div className="bg-white p-2 pb-4 border-t border-slate-100 shrink-0">
-        <div className="max-w-md mx-auto grid grid-cols-9 gap-0.5">
-           {keyboardKeys.map(k => {
-             const isValidOption = difficulty === 'EASY' && validForCurrentSide.has(k);
-             const isPressing = pressingKey === k;
-             
-             return (
-               <button
-                 key={k}
-                 onClick={() => difficulty !== 'HARD' && handlePress(k)}
-                 onPointerDown={(e) => {
-                   e.currentTarget.releasePointerCapture(e.pointerId);
-                   handlePressStart(k);
-                 }}
-                 onPointerUp={handlePressEnd}
-                 onPointerLeave={handlePressEnd}
-                 onContextMenu={(e) => e.preventDefault()}
-                 className={`aspect-[3/4] rounded-md font-bold text-lg transition-all select-none touch-manipulation ${
-                    isPressing ? 'scale-90 bg-indigo-200 border-indigo-400 text-indigo-800' :
-                    isValidOption 
-                    ? 'bg-yellow-100 border border-yellow-300 text-yellow-800 shadow-sm hover:bg-yellow-200'
-                    : 'bg-slate-50 border border-slate-200 text-slate-600 active:bg-slate-200'
-                 }`}
-               >
-                 {k}
-               </button>
-             );
-           })}
+        <div className="max-w-md mx-auto grid grid-cols-7 gap-1">
+           {/* Row 1: A-G */}
+           {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(k => (
+              <LetterButton key={k} k={k} highlightedKeys={difficulty === 'EASY' ? validForCurrentSide : new Set()} onPress={handlePress} />
+           ))}
+
+           {/* Row 2: H-N */}
+           {['H', 'I', 'J', 'K', 'L', 'M', 'N'].map(k => (
+              <LetterButton key={k} k={k} highlightedKeys={difficulty === 'EASY' ? validForCurrentSide : new Set()} onPress={handlePress} />
+           ))}
+
+           {/* Row 3: O-U */}
+           {['O', 'P', 'Q', 'R', 'S', 'T', 'U'].map(k => (
+              <LetterButton key={k} k={k} highlightedKeys={difficulty === 'EASY' ? validForCurrentSide : new Set()} onPress={handlePress} />
+           ))}
+
+           {/* Row 4: V-Z + DEL + ENTER */}
+           {['V', 'W', 'X', 'Y', 'Z'].map(k => (
+              <LetterButton key={k} k={k} highlightedKeys={difficulty === 'EASY' ? validForCurrentSide : new Set()} onPress={handlePress} />
+           ))}
+
+           {/* DELETE BUTTON (Column 6 of Row 4) */}
+           <button 
+              onClick={handleDelete}
+              className={`rounded-lg bg-slate-100 border border-slate-200 text-slate-500 font-black text-xs hover:bg-slate-200 active:scale-95 flex flex-col items-center justify-center transition-all ${
+                difficulty !== 'HARD' ? 'col-span-2 aspect-auto' : 'aspect-[3/4]'
+              }`}
+              aria-label="Delete"
+            >
+              <Delete size={20} />
+              <span className="text-[10px] mt-0.5">DEL</span>
+            </button>
+
+            {/* ENTER BUTTON (Column 7 of Row 4 - Only in Hard Mode) */}
+            {difficulty === 'HARD' && (
+                <button 
+                  onClick={handleEnter}
+                  disabled={!selectedChar}
+                  className={`aspect-[3/4] rounded-lg border font-black text-xs flex flex-col items-center justify-center transition-all ${
+                     selectedChar 
+                       ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-md shadow-indigo-200' 
+                       : 'bg-slate-50 border-slate-200 text-slate-300'
+                  }`}
+                  aria-label="Enter"
+                >
+                  <div className="w-5 h-5 flex items-center justify-center border-2 border-current rounded-md mb-0.5">
+                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 10 4 15 9 20"></polyline><path d="M20 4v7a4 4 0 0 1-4 4H4"></path></svg>
+                  </div>
+                  <span className="text-[10px]">ENT</span>
+                </button>
+            )}
         </div>
       </div>
     </div>
   );
 };
+// Updated HookView with 4-row keyboard and Hard Mode Enter logic
 
 export default HookView;

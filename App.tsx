@@ -41,6 +41,9 @@ const App: React.FC = () => {
   // Persistence for Training
   const [savedTrainingProgress, setSavedTrainingProgress] = useState<ProgressMap>({});
   
+  // New State: Completion Modal
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+
   // Hook State
   const [hookDeck, setHookDeck] = useState<HookData[]>([]);
   const [activeHookIndex, setActiveHookIndex] = useState(0);
@@ -246,16 +249,53 @@ const App: React.FC = () => {
   };
 
   const handleTrainingDeckComplete = () => {
-    if (selectedLength === 2) {
-      setMode(AppMode.HOME); 
-    } else {
+    // Show modal instead of auto-advancing
+    setShowCompletionModal(true);
+  };
+
+  const handleCompletionAction = (action: 'REINFORCE' | 'CONTINUE') => {
+      setShowCompletionModal(false);
+      
       const nextCharCode = currentLetter.charCodeAt(0) + 1;
-      if (nextCharCode <= 90) {
-        handleStartTraining(selectedLength, String.fromCharCode(nextCharCode));
+      const nextLetter = nextCharCode <= 90 ? String.fromCharCode(nextCharCode) : null;
+
+      if (action === 'REINFORCE') {
+          // Increase difficulty, RESTART SAME DECK
+          let nextDiff: Difficulty = difficulty;
+          if (difficulty === 'EASY') nextDiff = 'MEDIUM';
+          else if (difficulty === 'MEDIUM') nextDiff = 'HARD';
+          
+          setDifficulty(nextDiff);
+          handleStartTraining(selectedLength, currentLetter);
       } else {
-        setMode(AppMode.HOME);
+          // CONTINUE
+          // Logic: 
+          // If Easy/Medium -> Stay same difficulty, Go Next Letter
+          // If Hard -> User chose between "Next (Easy)" or "Next (Hard)" 
+          // (This simple handler assumes the UI passes the Desired Difficulty or we handle it here)
+          
+          // Actually, let's make the handler smarter or split the logic in the UI call
+          if (nextLetter) {
+              handleStartTraining(selectedLength, nextLetter);
+          } else {
+              setMode(AppMode.HOME);
+          }
       }
-    }
+  };
+
+  // Helper for Specific Hard Mode Options
+  const handleHardCompletion = (nextDiff: Difficulty) => {
+      setShowCompletionModal(false);
+      const nextCharCode = currentLetter.charCodeAt(0) + 1;
+      const nextLetter = nextCharCode <= 90 ? String.fromCharCode(nextCharCode) : null;
+      
+      setDifficulty(nextDiff);
+      
+      if (nextLetter) {
+          handleStartTraining(selectedLength, nextLetter);
+      } else {
+          setMode(AppMode.HOME);
+      }
   };
 
   // --- ACTIONS: HOOKS ---
@@ -344,6 +384,58 @@ const App: React.FC = () => {
             <DifficultyButton level="MEDIUM" />
             <DifficultyButton level="HARD" />
           </div>
+        </div>
+      )}
+
+      {/* COMPLETION MODAL */}
+      {showCompletionModal && mode === AppMode.TRAINING && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+           <div className="bg-white rounded-3xl p-6 shadow-2xl w-full max-w-sm text-center">
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                 <Trophy size={32} fill="currentColor" />
+              </div>
+              <h2 className="text-2xl font-black text-slate-800 mb-2">
+                 {selectedLength}L '{currentLetter}' Complete!
+              </h2>
+              <p className="text-slate-500 font-medium mb-6">
+                 Excellent work. How would you like to proceed?
+              </p>
+              
+              <div className="flex flex-col gap-3">
+                 {difficulty === 'EASY' && (
+                    <>
+                       <button onClick={() => handleCompletionAction('REINFORCE')} className="py-4 rounded-xl bg-indigo-600 text-white font-bold text-lg hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200">
+                          Reenforce with MEDIUM
+                       </button>
+                       <button onClick={() => handleCompletionAction('CONTINUE')} className="py-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:scale-95 transition-all">
+                          Continue to Next Letter
+                       </button>
+                    </>
+                 )}
+
+                 {difficulty === 'MEDIUM' && (
+                    <>
+                       <button onClick={() => handleCompletionAction('REINFORCE')} className="py-4 rounded-xl bg-rose-600 text-white font-bold text-lg hover:bg-rose-700 active:scale-95 transition-all shadow-lg shadow-rose-200">
+                          Reenforce with HARD
+                       </button>
+                       <button onClick={() => handleCompletionAction('CONTINUE')} className="py-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:scale-95 transition-all">
+                          Continue to Next Letter
+                       </button>
+                    </>
+                 )}
+
+                 {difficulty === 'HARD' && (
+                    <>
+                       <button onClick={() => handleHardCompletion('EASY')} className="py-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:scale-95 transition-all">
+                          Continue (Easy)
+                       </button>
+                       <button onClick={() => handleHardCompletion('HARD')} className="py-4 rounded-xl bg-slate-800 text-white font-bold text-lg hover:bg-slate-900 active:scale-95 transition-all shadow-lg">
+                          Continue (Hard)
+                       </button>
+                    </>
+                 )}
+              </div>
+           </div>
         </div>
       )}
 

@@ -160,22 +160,14 @@ const TrainingView: React.FC<TrainingViewProps> = ({
   const strictFail = () => {
     // Show feedback briefly then trigger reset
     setTimeout(() => {
-      // 2-Letter Hard Mode: Full Deck Reset (Keep as is)
-      // 3/4-Letter Hard Mode: Word Reset Only (New behavior)
-      if (currentWord.w.length === 2) {
-          onFail(currentWord); 
-      } else {
-          // Just reset the input for this word
-          setInputValue('');
-          setFeedback({ msg: 'Type the missing letters', type: 'neutral' });
-      }
+      // Hard Mode: RESET TO BEGINNING OF CATEGORY (Deck)
+      // This applies to 2L (Whole deck) and 3/4L (Current Letter Category)
+      onFail(currentWord); 
       
-      // Force local reset immediately (only needed for Deck Reset really, but harmless)
-      if (currentWord.w.length === 2) {
-          setInternalIndex(0);
-          setInputValue('');
-          setFeedback({ msg: 'Type the missing letters', type: 'neutral' });
-      }
+      // Force local reset immediately
+      setInternalIndex(0);
+      setInputValue('');
+      setFeedback({ msg: 'Type the missing letters', type: 'neutral' });
     }, 1500);
   };
 

@@ -130,9 +130,16 @@ const App: React.FC = () => {
     if (mode === AppMode.TRAINING) {
         const key = `${difficulty}-${selectedLength}-${currentLetter}`;
         const savedIndex = savedTrainingProgress[key] || 0;
-        setDeckProgress(savedIndex);
+        
+        // Safeguard: Ensure we don't restore an out-of-bounds index (e.g. from a completed run)
+        // activeDeck depends on length/letter so it's stable across difficulty switches
+        if (activeDeck.length > 0 && savedIndex >= activeDeck.length) {
+            setDeckProgress(0);
+        } else {
+            setDeckProgress(savedIndex);
+        }
     }
-  }, [difficulty, mode, selectedLength, currentLetter, savedTrainingProgress]);
+  }, [difficulty, mode, selectedLength, currentLetter, savedTrainingProgress, activeDeck]);
 
 
   // --- OPTIMIZATION: MEMOIZED DATA ---
@@ -176,7 +183,10 @@ const App: React.FC = () => {
 
   // --- ACTIONS: TRAINING ---
 
-  const handleStartTraining = (len: WordLength, startChar: string = 'A') => {
+  const handleStartTraining = (len: WordLength, startChar: string = 'A', overrideDifficulty?: Difficulty) => {
+    // Use override if provided, otherwise current state
+    const targetDiff = overrideDifficulty || difficulty;
+    
     setSelectedLength(len);
     setCurrentLetter(startChar);
     
@@ -193,8 +203,8 @@ const App: React.FC = () => {
       return;
     }
 
-    // 2. Determine Start Index
-    const key = `${difficulty}-${len}-${startChar}`;
+    // 2. Determine Start Index using TARGET difficulty
+    const key = `${targetDiff}-${len}-${startChar}`;
     let savedIndex = savedTrainingProgress[key] || 0;
     
     // FIX: If savedIndex is invalid (completed or out of bounds), reset to 0
@@ -266,15 +276,10 @@ const App: React.FC = () => {
           else if (difficulty === 'MEDIUM') nextDiff = 'HARD';
           
           setDifficulty(nextDiff);
-          handleStartTraining(selectedLength, currentLetter);
+          // Pass nextDiff explicitly to ensure we reset the correct progress key
+          handleStartTraining(selectedLength, currentLetter, nextDiff);
       } else {
           // CONTINUE
-          // Logic: 
-          // If Easy/Medium -> Stay same difficulty, Go Next Letter
-          // If Hard -> User chose between "Next (Easy)" or "Next (Hard)" 
-          // (This simple handler assumes the UI passes the Desired Difficulty or we handle it here)
-          
-          // Actually, let's make the handler smarter or split the logic in the UI call
           if (nextLetter) {
               handleStartTraining(selectedLength, nextLetter);
           } else {
@@ -292,7 +297,7 @@ const App: React.FC = () => {
       setDifficulty(nextDiff);
       
       if (nextLetter) {
-          handleStartTraining(selectedLength, nextLetter);
+          handleStartTraining(selectedLength, nextLetter, nextDiff);
       } else {
           setMode(AppMode.HOME);
       }

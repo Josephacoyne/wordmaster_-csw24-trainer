@@ -23,7 +23,7 @@ export enum AppMode {
   HOOKS = 'HOOKS'
 }
 
-export type WordLength = 2 | 3 | 4;
+export type WordLength = 2 | 3 | 4 | 'ALL';
 export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
 // Challenge Types

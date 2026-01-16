@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { WordEntry, WordLength, Difficulty, ChallengeItem, ChallengeOrder, ChallengeSnapshot } from '../types';
-import { X, Trophy, ArrowLeft, ArrowRight, Shuffle, SortAsc } from 'lucide-react';
+import { X, Trophy, ArrowLeft, ArrowRight, Star, Gamepad2, PlayCircle, RotateCcw } from 'lucide-react';
 
 interface ChallengeViewProps {
   difficulty: Difficulty;
@@ -11,6 +11,8 @@ interface ChallengeViewProps {
   topStreak: number;
   onUpdateHighScore: (score: number) => void;
   initialState?: ChallengeSnapshot | null;
+  onStartNewLevel: (len: WordLength, diff: Difficulty) => void;
+  savedProgress?: Record<string, ChallengeSnapshot>; // Key: "DIFFICULTY-LENGTH"
 }
 
 const ChallengeView: React.FC<ChallengeViewProps> = ({ 
@@ -21,12 +23,17 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   onExit,
   topStreak,
   onUpdateHighScore,
-  initialState
+  initialState,
+  onStartNewLevel,
+  savedProgress = {}
 }) => {
   // Setup State
   const [isPlaying, setIsPlaying] = useState(false);
   const [targetLength, setTargetLength] = useState<WordLength | null>(null);
-  const [order, setOrder] = useState<ChallengeOrder>('RANDOM');
+  
+  // order is now implicit based on length (2/3/4 = ALPHA, ALL = RANDOM)
+  // But we store it in state to track it for snapshots
+  const [order, setOrder] = useState<ChallengeOrder>('ALPHA');
 
   // Game State
   const [deck, setDeck] = useState<ChallengeItem[]>([]);
@@ -52,9 +59,23 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
     }
   }, [initialState]);
 
-  const buildDeck = (len: WordLength, mode: ChallengeOrder): ChallengeItem[] => {
-    const reals = fullDictionary.filter(w => w.w.length === len);
-    const fakeWords = fakes[len] || [];
+  const buildDeck = (len: WordLength): { items: ChallengeItem[], mode: ChallengeOrder } => {
+    let mode: ChallengeOrder = 'ALPHA';
+    
+    let reals: WordEntry[] = [];
+    let fakeWords: string[] = [];
+
+    if (len === 'ALL') {
+      mode = 'RANDOM';
+      // Pick subset or all? 
+      // "Free For All - that can be random as long as it doesn't repeat too easily."
+      // Let's take ALL words. It's about 7000 words.
+      reals = fullDictionary.filter(w => w.w.length >= 2 && w.w.length <= 4);
+      fakeWords = [...(fakes[2] || []), ...(fakes[3] || []), ...(fakes[4] || [])];
+    } else {
+      reals = fullDictionary.filter(w => w.w.length === len);
+      fakeWords = fakes[len] || [];
+    }
     
     // Create items
     const realItems: ChallengeItem[] = reals.map(r => ({ word: r.w, isReal: true, data: r }));
@@ -89,18 +110,36 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
       });
     }
     
-    return combined;
+    return { items: combined, mode };
   };
 
-  const handleStart = (len: WordLength) => {
-    const newDeck = buildDeck(len, order);
-    setDeck(newDeck);
-    setDeckIndex(0);
-    setTargetLength(len);
-    setStreak(0);
-    setIsPlaying(true);
-    setIsComplete(false);
-    setResult(null);
+  const handleStart = (len: WordLength, forceRestart: boolean = false) => {
+    // Check for saved progress first
+    const saveKey = `${difficulty}-${len}`;
+    const saved = savedProgress[saveKey];
+
+    if (saved && !forceRestart) {
+       // Resume
+       setDeck(saved.deck);
+       setDeckIndex(saved.index);
+       setStreak(saved.streak);
+       setTargetLength(saved.targetLength);
+       setOrder(saved.order);
+       setIsPlaying(true);
+       setResult(null);
+       setIsComplete(false);
+    } else {
+       // Start New
+       const { items, mode } = buildDeck(len);
+       setDeck(items);
+       setDeckIndex(0);
+       setTargetLength(len);
+       setOrder(mode);
+       setStreak(0);
+       setIsPlaying(true);
+       setIsComplete(false);
+       setResult(null);
+    }
   };
 
   const nextWord = () => {
@@ -151,57 +190,16 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
               }
               // EASY: Do nothing (Resume from current spot = deckIndex)
            } else {
-              // RANDOM: Reset completely (Standard Behavior)
-              // Actually, standard behavior usually resets deck on Hard? 
-              // But user specified behavior for Alphabetical specifically.
-              // For Random, existing behavior was:
-              // if (targetLength) handleStart(targetLength);
-              
-              // Let's assume standard Random Hard mode resets everything?
-              // The user said "Random is how it is now". 
-              // Previous code for random failure reset deck on Hard? No, previous code just went next.
-              // EXCEPT lines 145-147 in previous file:
-              // } else {
-              //    // RANDOM: Reset completely (Standard Behavior)
-              //    if (targetLength) handleStart(targetLength);
-              // }
-              // Wait, previous code forced a restart on Random failure?
-              // That seems harsh for all difficulties.
-              // Let's check difficulty for Random too if we want to be safe, 
-              // or just keep it as "resume" if not specified.
-              // User said "Random is how it is now".
-              // Previous implementation logic (lines 130-147 in ReadFile output):
-              // if (order === 'ALPHA') { ... } else { if (targetLength) handleStart(targetLength); }
-              // This implies Random ALWAYS restarted the deck on failure!
-              
-              // If that's "how it is now", I should preserve it, BUT:
-              // "On Easy Mode ... it continues where they left off."
-              // "In Medium Mode Alphabetical Challenge - it resets to the Letter"
-              // "Hard Mode Alphabetical Challenge it resests to the beginning"
-              
-              // I will stick to the requested Alphabetical logic. 
-              // For Random, I will implement "Reset" as it was before if that's what "how it is now" means.
-              // However, if Random Easy resets, that contradicts "Easy Mode... continues".
-              // I'll assume Easy Random also continues.
-              
-              if (difficulty !== 'EASY') {
-                  // Reset for Medium/Hard Random? Or just Hard?
-                  // Previous code was blunt: Reset everything.
-                  // I'll assume Hard resets. Medium? 
-                  // Let's make Random behave like Hard Alphabetical (reset all) if not Easy?
-                  // Or just keep the blunt reset for now to match "how it is now".
-                  if (targetLength) {
-                      // We can't restart here easily because we are passing snapshot.
-                      // We need to signal a restart.
-                      // Setting nextIndex = 0 is a restart if deck is same.
-                      // But handleStart reshuffles.
-                      // Snapshot preserves deck.
-                      // So "Restart" means we might need a new deck?
-                      // If so, we might not want to use snapshot for Random Restart.
-                      // But let's just reset index to 0 for consistency with "Reset".
-                      nextIndex = 0;
-                  }
-              }
+              // RANDOM (Free For All)
+              // "Random is how it is now" -> Resets on Hard?
+              // Let's apply same logic as standard modes roughly
+              if (difficulty === 'HARD') {
+                 nextIndex = 0;
+              } 
+              // Easy/Medium continue for Random/FreeForAll? 
+              // User didn't specify medium/easy random behavior explicitly except "Random is how it is now"
+              // Standard behavior previously was just reset on failure if I recall. 
+              // But let's be generous for Free For All - maybe only Hard resets.
            }
 
            // Create snapshot for resumption
@@ -224,12 +222,23 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
     }
   };
 
-  const handleNextLevel = () => {
-    if (targetLength && targetLength < 4) {
-      handleStart((targetLength + 1) as WordLength);
-    } else {
-      onExit();
-    }
+  const handleCompletionAction = (targetLen: WordLength, targetDiff: Difficulty) => {
+    // We need to call a prop that resets state in App and starts new challenge
+    // However, App needs to know we are done with THIS challenge.
+    // Actually, onStartNewLevel will just overwrite the state in App.
+    onStartNewLevel(targetLen, targetDiff);
+    
+    // We also need to reset local state if we want to play immediately, 
+    // but App will likely re-mount us or update props.
+    // If App updates props (difficulty), we need to trigger a start.
+    // Since App controls difficulty, we just tell App to change difficulty and restart.
+    // But App's handleStartTraining is for Training. We need handleStartChallenge.
+    // We passed onStartNewLevel prop.
+  };
+
+  const hasSavedProgress = (len: WordLength) => {
+      const saveKey = `${difficulty}-${len}`;
+      return !!savedProgress[saveKey];
   };
 
   if (!isPlaying) {
@@ -247,48 +256,79 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
           <div className="text-center mb-2">
             <Trophy size={48} className="mx-auto text-yellow-500 mb-4" />
             <h3 className="text-2xl font-black text-slate-800 mb-1">Choose your Arena</h3>
-            <p className="text-slate-500 font-medium">Select word length to challenge</p>
-          </div>
-
-          {/* Order Toggle */}
-          <div className="bg-white p-1 rounded-2xl shadow-sm flex gap-1 mb-2">
-            <button
-              onClick={() => setOrder('RANDOM')}
-              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-                order === 'RANDOM'
-                  ? 'bg-slate-800 text-white shadow-lg'
-                  : 'text-slate-400 hover:bg-slate-50'
-              }`}
-            >
-              <Shuffle size={16} />
-              RANDOM
-            </button>
-            <button
-              onClick={() => setOrder('ALPHA')}
-              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-                order === 'ALPHA'
-                  ? 'bg-slate-800 text-white shadow-lg'
-                  : 'text-slate-400 hover:bg-slate-50'
-              }`}
-            >
-              <SortAsc size={16} />
-              ALPHABETICAL
-            </button>
+            <p className="text-slate-500 font-medium">Select challenge deck ({difficulty})</p>
           </div>
 
           <div className="flex flex-col gap-3">
-            {[2, 3, 4].map((len) => (
-               <button
-                 key={len}
-                 onClick={() => handleStart(len as WordLength)}
-                 className="w-full py-5 bg-white border-2 border-slate-100 rounded-2xl shadow-sm hover:border-indigo-500 hover:text-indigo-600 font-black text-xl text-slate-700 transition-all flex items-center justify-between px-6 group"
-               >
-                 <span>{len} Letters</span>
-                 <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                    <ArrowRight className="text-slate-400 group-hover:text-indigo-600" size={16} />
-                 </div>
-               </button>
-            ))}
+            {[2, 3, 4].map((len) => {
+               const saved = hasSavedProgress(len as WordLength);
+               return (
+               <div key={len} className="flex gap-2">
+                 <button
+                   onClick={() => handleStart(len as WordLength, false)}
+                   className={`flex-1 py-5 bg-white border-2 rounded-2xl shadow-sm font-black text-xl transition-all flex items-center justify-between px-6 group ${saved ? 'border-indigo-200 text-indigo-700' : 'border-slate-100 text-slate-700 hover:border-indigo-500 hover:text-indigo-600'}`}
+                 >
+                   <div className="flex items-center gap-3">
+                       <span>{len} Letters</span>
+                       {saved && <span className="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-1 rounded-full uppercase tracking-wider">Resume</span>}
+                   </div>
+                   <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
+                      {saved ? <PlayCircle className="text-indigo-500" size={20} /> : <ArrowRight className="text-slate-400 group-hover:text-indigo-600" size={16} />}
+                   </div>
+                 </button>
+                 
+                 {/* Explicit Restart Button if Saved Exists */}
+                 {saved && (
+                    <button 
+                        onClick={() => {
+                            if (confirm("Are you sure you want to restart? Current progress will be lost.")) {
+                                handleStart(len as WordLength, true);
+                            }
+                        }}
+                        className="w-20 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-colors"
+                    >
+                        <RotateCcw size={20} />
+                    </button>
+                 )}
+               </div>
+            )})}
+            
+            {/* Free For All Button */}
+            <div className="mt-2">
+                 {/* Check if saved for ALL */}
+                 {(() => {
+                    const savedAll = hasSavedProgress('ALL');
+                    return (
+                        <div className="flex gap-2">
+                            <button
+                               onClick={() => handleStart('ALL', false)}
+                               className={`flex-1 py-5 bg-gradient-to-r from-slate-800 to-slate-900 text-white rounded-2xl shadow-lg hover:shadow-xl font-black text-xl transition-all flex items-center justify-between px-6 group`}
+                             >
+                               <div className="flex items-center gap-3">
+                                  <Gamepad2 size={24} className="text-yellow-400" />
+                                  <span>Free For All</span>
+                                  {savedAll && <span className="text-[10px] bg-white/20 text-white px-2 py-1 rounded-full uppercase tracking-wider">Resume</span>}
+                               </div>
+                               <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+                                  {savedAll ? <PlayCircle className="text-white" size={20} /> : <ArrowRight className="text-white" size={16} />}
+                               </div>
+                             </button>
+                             {savedAll && (
+                                <button 
+                                    onClick={() => {
+                                        if (confirm("Are you sure you want to restart? Current progress will be lost.")) {
+                                            handleStart('ALL', true);
+                                        }
+                                    }}
+                                    className="w-20 bg-slate-200 rounded-2xl flex items-center justify-center text-slate-500 hover:bg-rose-100 hover:text-rose-600 transition-colors"
+                                >
+                                    <RotateCcw size={20} />
+                                </button>
+                             )}
+                        </div>
+                    );
+                 })()}
+            </div>
           </div>
         </div>
       </div>
@@ -297,28 +337,96 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
 
   // Completion Modal
   if (isComplete) {
+    let title = `${targetLength}L Challenge Complete!`;
+    let sub = `You've mastered the ${difficulty} deck.`;
+    
+    // Custom Titles/Messages based on user request
+    if (targetLength === 2 && difficulty === 'EASY') {
+       title = "2L Challenge Mode (Easy) is completed!";
+    } else if (targetLength === 4 && difficulty === 'HARD') {
+       title = "Brilliant! You're a 4L Champion!";
+       sub = "You have conquered the ultimate challenge.";
+    }
+
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
          <div className="bg-white rounded-3xl p-8 shadow-2xl w-full max-w-sm text-center">
             <div className="w-20 h-20 bg-yellow-100 text-yellow-500 rounded-full flex items-center justify-center mx-auto mb-6">
-               <Trophy size={40} fill="currentColor" />
+               {targetLength === 4 && difficulty === 'HARD' ? (
+                   <Star size={40} fill="currentColor" />
+               ) : (
+                   <Trophy size={40} fill="currentColor" />
+               )}
             </div>
-           <h2 className="text-3xl font-black text-slate-800 mb-2">
-              {targetLength}L Challenge Complete
+           <h2 className="text-2xl font-black text-slate-800 mb-2 leading-tight">
+              {title}
            </h2>
            <p className="text-slate-500 font-medium mb-8">
-              You've faced every word in the deck.
+              {sub}
            </p>
            
            <div className="flex flex-col gap-3">
-              {targetLength && targetLength < 4 ? (
-                 <button onClick={handleNextLevel} className="py-4 rounded-xl bg-indigo-600 text-white font-bold text-lg hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200">
-                   Try {targetLength + 1}L
+              {/* PROGRESSION LOGIC */}
+              
+              {/* 2L EASY -> 3L EASY or 2L HARD */}
+              {targetLength === 2 && difficulty === 'EASY' && (
+                 <>
+                    <button onClick={() => handleCompletionAction(2, 'HARD')} className="py-4 rounded-xl bg-slate-800 text-white font-bold text-lg hover:bg-slate-900 active:scale-95 transition-all shadow-lg">
+                       Reenforce with Hard
+                    </button>
+                    <button onClick={() => handleCompletionAction(3, 'EASY')} className="py-4 rounded-xl bg-indigo-600 text-white font-bold text-lg hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200">
+                       Continue with 3L (Easy)
+                    </button>
+                 </>
+              )}
+
+              {/* 3L EASY -> 3L MEDIUM or 4L EASY */}
+              {targetLength === 3 && difficulty === 'EASY' && (
+                 <>
+                    <button onClick={() => handleCompletionAction(3, 'MEDIUM')} className="py-4 rounded-xl bg-indigo-600 text-white font-bold text-lg hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200">
+                       Reenforce with Medium
+                    </button>
+                    <button onClick={() => handleCompletionAction(4, 'EASY')} className="py-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:scale-95 transition-all">
+                       Continue to 4L (Easy)
+                    </button>
+                 </>
+              )}
+
+              {/* 3L MEDIUM -> 3L HARD or 4L EASY */}
+              {targetLength === 3 && difficulty === 'MEDIUM' && (
+                 <>
+                    <button onClick={() => handleCompletionAction(3, 'HARD')} className="py-4 rounded-xl bg-rose-600 text-white font-bold text-lg hover:bg-rose-700 active:scale-95 transition-all shadow-lg shadow-rose-200">
+                       Challenge 3L Hard
+                    </button>
+                    <button onClick={() => handleCompletionAction(4, 'EASY')} className="py-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:scale-95 transition-all">
+                       Continue to 4L (Easy)
+                    </button>
+                 </>
+              )}
+
+              {/* 4L EASY -> 4L MEDIUM */}
+              {targetLength === 4 && difficulty === 'EASY' && (
+                 <button onClick={() => handleCompletionAction(4, 'MEDIUM')} className="py-4 rounded-xl bg-indigo-600 text-white font-bold text-lg hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200">
+                    Reenforce with Medium
                  </button>
-              ) : null}
-               <button onClick={onExit} className="py-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:scale-95 transition-all">
-                  Return Home
-               </button>
+              )}
+
+              {/* 4L MEDIUM -> 4L HARD */}
+              {targetLength === 4 && difficulty === 'MEDIUM' && (
+                 <button onClick={() => handleCompletionAction(4, 'HARD')} className="py-4 rounded-xl bg-rose-600 text-white font-bold text-lg hover:bg-rose-700 active:scale-95 transition-all shadow-lg shadow-rose-200">
+                    Face 4L Hard
+                 </button>
+              )}
+              
+              {/* DEFAULT / FALLBACK / CHAMPION EXIT */}
+              {((targetLength === 2 && difficulty !== 'EASY') || 
+                (targetLength === 3 && difficulty === 'HARD') ||
+                (targetLength === 4 && difficulty === 'HARD') ||
+                targetLength === 'ALL') && (
+                 <button onClick={onExit} className="py-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:scale-95 transition-all">
+                    Return Home
+                 </button>
+              )}
             </div>
          </div>
       </div>

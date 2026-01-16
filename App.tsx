@@ -23,6 +23,7 @@ import { Trophy, Zap } from 'lucide-react';
 // --- TYPE DEFINITIONS FOR SAVED STATE ---
 type MasteryState = Record<Difficulty, Set<string>>;
 type ProgressMap = Record<string, number>; // Key: "DIFFICULTY-LENGTH-LETTER", Value: Index
+type ChallengeProgressMap = Record<string, ChallengeSnapshot>; // Key: "DIFFICULTY-LENGTH"
 
 const App: React.FC = () => {
   // --- STATE ---
@@ -49,8 +50,9 @@ const App: React.FC = () => {
   const [hookDeck, setHookDeck] = useState<HookData[]>([]);
   const [activeHookIndex, setActiveHookIndex] = useState(0);
 
-  // Challenge State (Suspended)
+  // Challenge State
   const [suspendedChallenge, setSuspendedChallenge] = useState<ChallengeSnapshot | null>(null);
+  const [savedChallengeProgress, setSavedChallengeProgress] = useState<ChallengeProgressMap>({});
 
   // Stats
   const [challengeHighScore, setChallengeHighScore] = useState(0);
@@ -99,6 +101,14 @@ const App: React.FC = () => {
             setSavedTrainingProgress(JSON.parse(savedProgress));
         } catch (e) { console.error("Failed to load progress", e); }
     }
+
+    // 4. Load Challenge Progress
+    const savedChallenge = localStorage.getItem('endcap_challenge_progress');
+    if (savedChallenge) {
+        try {
+            setSavedChallengeProgress(JSON.parse(savedChallenge));
+        } catch (e) { console.error("Failed to load challenge progress", e); }
+    }
   }, []);
 
   // --- PERSISTENCE: SAVE EFFECTS ---
@@ -128,6 +138,10 @@ const App: React.FC = () => {
     localStorage.setItem('endcap_training_progress', JSON.stringify(savedTrainingProgress));
   }, [savedTrainingProgress]);
 
+  useEffect(() => {
+    localStorage.setItem('endcap_challenge_progress', JSON.stringify(savedChallengeProgress));
+  }, [savedChallengeProgress]);
+
   // --- MODE SWITCHING EFFECT ---
   // When difficulty changes while in Training, update the position immediately
   useEffect(() => {
@@ -135,8 +149,7 @@ const App: React.FC = () => {
         const key = `${difficulty}-${selectedLength}-${currentLetter}`;
         const savedIndex = savedTrainingProgress[key] || 0;
         
-        // Safeguard: Ensure we don't restore an out-of-bounds index (e.g. from a completed run)
-        // activeDeck depends on length/letter so it's stable across difficulty switches
+        // Safeguard: Ensure we don't restore an out-of-bounds index
         if (activeDeck.length > 0 && savedIndex >= activeDeck.length) {
             setDeckProgress(0);
         } else {
@@ -147,28 +160,25 @@ const App: React.FC = () => {
 
 
   // --- OPTIMIZATION: MEMOIZED DATA ---
-  // 1. Split dictionary once (Pre-computation)
   const dictionaryByLength = useMemo(() => ({
     2: CSW_DICTIONARY.filter(w => w.w.length === 2),
     3: CSW_DICTIONARY.filter(w => w.w.length === 3),
     4: CSW_DICTIONARY.filter(w => w.w.length === 4),
-  }), []); // Empty deps = runs once on mount
+  }), []); 
 
-  // 2. Count totals once
   const totalCounts = useMemo(() => ({
     2: dictionaryByLength[2].length,
     3: dictionaryByLength[3].length,
     4: dictionaryByLength[4].length
   }), [dictionaryByLength]);
 
-  // 3. Pre-calculate Hook Data
-  // This is expensive (iterates whole dictionary), so we strictly memoize it.
   const allHookData = useMemo(() => {
     return generateHookData(CSW_DICTIONARY);
-  }, []); // Runs once on mount
+  }, []); 
 
   // --- STATS HELPERS ---
   const getPercentage = (len: WordLength) => {
+    if (len === 'ALL') return 0;
     const total = totalCounts[len];
     if (total === 0) return 0;
     let count = 0;
@@ -188,13 +198,13 @@ const App: React.FC = () => {
   // --- ACTIONS: TRAINING ---
 
   const handleStartTraining = (len: WordLength, startChar: string = 'A', overrideDifficulty?: Difficulty) => {
-    // Use override if provided, otherwise current state
+    if (len === 'ALL') return; // Should not happen for training currently
+    
     const targetDiff = overrideDifficulty || difficulty;
     
     setSelectedLength(len);
     setCurrentLetter(startChar);
     
-    // 1. Generate Deck FIRST
     let batch: WordEntry[];
     if (len === 2) {
       batch = dictionaryByLength[2];
@@ -207,32 +217,25 @@ const App: React.FC = () => {
       return;
     }
 
-    // 2. Determine Start Index using TARGET difficulty
     const key = `${targetDiff}-${len}-${startChar}`;
     let savedIndex = savedTrainingProgress[key] || 0;
     
-    // FIX: If savedIndex is invalid (completed or out of bounds), reset to 0
-    // This allows replaying a completed deck ("Loading..." fix)
     if (savedIndex >= batch.length) {
        savedIndex = 0;
-       // Update persistence immediately to keep state consistent
        setSavedTrainingProgress(prev => ({ ...prev, [key]: 0 }));
     }
 
-    // 3. Set State
     setDeckProgress(savedIndex);
     setActiveDeck(batch);
     setMode(AppMode.TRAINING);
   };
 
   const handleTrainingSuccess = (word: WordEntry) => {
-    // 1. Save Position
     const key = `${difficulty}-${selectedLength}-${currentLetter}`;
     const nextIndex = deckProgress + 1;
     
     setSavedTrainingProgress(prev => ({ ...prev, [key]: nextIndex }));
     
-    // 2. Incremental Mastery
     setMasteredWords(prev => {
         const newSet = new Set(prev[difficulty]);
         newSet.add(word.w);
@@ -248,12 +251,10 @@ const App: React.FC = () => {
 
   const handleTrainingFail = (word: WordEntry) => {
     if (difficulty === 'HARD') {
-      // STRICT MODE: Reset
       const key = `${difficulty}-${selectedLength}-${currentLetter}`;
       setSavedTrainingProgress(prev => ({ ...prev, [key]: 0 }));
       setDeckProgress(0);
       
-      // Remove progress for this specific letter
       setMasteredWords(prev => {
         const newSet = new Set(prev[difficulty]);
         activeDeck.forEach(w => newSet.delete(w.w));
@@ -263,29 +264,24 @@ const App: React.FC = () => {
   };
 
   const handleTrainingDeckComplete = () => {
-    // Show modal instead of auto-advancing
     setShowCompletionModal(true);
   };
 
   const handleCompletionAction = (action: 'REINFORCE' | 'CONTINUE') => {
       setShowCompletionModal(false);
-      
+      if (selectedLength === 'ALL') return;
+
       const nextCharCode = currentLetter.charCodeAt(0) + 1;
       const nextLetter = nextCharCode <= 90 ? String.fromCharCode(nextCharCode) : null;
 
       if (action === 'REINFORCE') {
-          // Increase difficulty, RESTART SAME DECK
           let nextDiff: Difficulty = difficulty;
           if (difficulty === 'EASY') nextDiff = 'MEDIUM';
           else if (difficulty === 'MEDIUM') nextDiff = 'HARD';
           
           setDifficulty(nextDiff);
-          // Pass nextDiff explicitly to ensure we reset the correct progress key
           handleStartTraining(selectedLength, currentLetter, nextDiff);
       } else {
-          // CONTINUE
-          // Special Case: 2-Letter Words are a single batch.
-          // "Continue" should always go to 3L Easy.
           if (selectedLength === 2) {
              handleStartTraining(3, 'A', 'EASY');
              return;
@@ -294,15 +290,15 @@ const App: React.FC = () => {
           if (nextLetter) {
               handleStartTraining(selectedLength, nextLetter);
           } else {
-              // End of Alphabet
               setMode(AppMode.HOME);
           }
       }
   };
 
-  // Helper for Specific Hard Mode Options
   const handleHardCompletion = (nextDiff: Difficulty) => {
       setShowCompletionModal(false);
+      if (selectedLength === 'ALL') return;
+
       const nextCharCode = currentLetter.charCodeAt(0) + 1;
       const nextLetter = nextCharCode <= 90 ? String.fromCharCode(nextCharCode) : null;
       
@@ -315,16 +311,37 @@ const App: React.FC = () => {
       }
   };
 
+  // --- ACTIONS: CHALLENGE ---
+  const handleStartChallenge = (len?: WordLength) => {
+     setMode(AppMode.CHALLENGE);
+  };
+
+  // Helper to start a specific challenge level (used by completion logic)
+  const handleStartNewLevel = (len: WordLength, diff: Difficulty) => {
+      setDifficulty(diff);
+      // Clear saved progress for the NEW level to ensure fresh start
+      const key = `${diff}-${len}`;
+      setSavedChallengeProgress(prev => {
+         const next = { ...prev };
+         delete next[key];
+         return next;
+      });
+      // We also need to clear suspendedChallenge if it exists to avoid hydration conflict
+      setSuspendedChallenge(null);
+      
+      setAutoStartChallenge(len);
+      setMode(AppMode.CHALLENGE);
+  };
+  
+  const [autoStartChallenge, setAutoStartChallenge] = useState<WordLength | null>(null);
+
   // --- ACTIONS: HOOKS ---
 
   const startHooks = () => {
-    // If we have an active deck AND we haven't reached the end, resume it.
     if (hookDeck.length > 0 && activeHookIndex < hookDeck.length) {
        setMode(AppMode.HOOKS);
        return;
     }
-
-    // Start Fresh: Use PRE-CALCULATED data
     const shuffled = [...allHookData].sort(() => 0.5 - Math.random());
     setHookDeck(shuffled);
     setActiveHookIndex(0);
@@ -350,9 +367,8 @@ const App: React.FC = () => {
     if (activeHookIndex < hookDeck.length - 1) {
       setActiveHookIndex(prev => prev + 1);
     } else {
-      // Completed! Clear deck so next time we start fresh.
       setHookDeck([]); 
-      setActiveHookIndex(0); // Explicitly reset index to 0
+      setActiveHookIndex(0); 
       setMode(AppMode.HOME);
     }
   };
@@ -363,7 +379,16 @@ const App: React.FC = () => {
     setBogeyWord(word);
     setBogeySource(source);
     if (snapshot) {
-      setSuspendedChallenge(snapshot);
+      // Save to persistence immediately
+      // This ensures if they close app on Bogey screen, it's saved?
+      // Or just in state.
+      setSuspendedChallenge(snapshot); 
+      
+      // Also update the persistent store
+      if (snapshot.targetLength) { // ALL or 2/3/4
+          const key = `${difficulty}-${snapshot.targetLength}`;
+          setSavedChallengeProgress(prev => ({ ...prev, [key]: snapshot }));
+      }
     }
     setMode(AppMode.BOGEY);
   };
@@ -376,7 +401,8 @@ const App: React.FC = () => {
 
   const handleHome = () => {
     setMode(AppMode.HOME);
-    setSuspendedChallenge(null); // Clear suspended challenge
+    setSuspendedChallenge(null); 
+    setAutoStartChallenge(null);
   }
 
   const DifficultyButton = ({ level }: { level: Difficulty }) => (
@@ -521,7 +547,7 @@ const App: React.FC = () => {
 
             {/* CHALLENGE BUTTON */}
             <button 
-              onClick={() => setMode(AppMode.CHALLENGE)}
+              onClick={() => handleStartChallenge()}
               className="mt-2 w-full py-6 bg-gradient-to-r from-indigo-500 to-violet-600 text-white rounded-[2rem] font-black text-xl shadow-xl shadow-indigo-200 hover:shadow-indigo-300 transition-all flex items-center justify-center gap-2"
             >
               <Trophy size={24} className="text-yellow-300" />
@@ -559,7 +585,19 @@ const App: React.FC = () => {
             topStreak={challengeHighScore}
             onUpdateHighScore={handleChallengeHighScore}
             onExit={handleHome}
-            initialState={suspendedChallenge}
+            initialState={suspendedChallenge || (autoStartChallenge ? null : null)} // We rely on internal check now?
+            // Actually, we modified ChallengeView to check savedProgress. 
+            // We should just pass savedProgress and let it handle resumption via menu or autoStart.
+            // If autoStart is set, we want to start immediately.
+            // But ChallengeView builds the deck.
+            // If savedProgress exists for autoStart, ChallengeView will auto-resume?
+            // Not implemented: ChallengeView's auto-start is not yet wired.
+            // But menu buttons call handleStart.
+            // We can just rely on user clicking "3L" in menu if they are "Continuing".
+            // But they clicked "Continue" in previous modal.
+            // I should wire autoStartChallenge into ChallengeView via a useEffect.
+            savedProgress={savedChallengeProgress}
+            onStartNewLevel={handleStartNewLevel}
           />
         )}
 

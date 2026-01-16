@@ -223,8 +223,51 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
         }, 800);
       } else {
         setTimeout(() => {
-           setStreak(0);
-           nextWord();
+           // Check if we need to apply penalty (Medium/Hard) for fake words too
+           let shouldPenalize = false;
+           let nextIndex = deckIndex;
+           
+           if (order === 'ALPHA') {
+               if (difficulty === 'HARD') {
+                   nextIndex = 0;
+                   shouldPenalize = true;
+               } else if (difficulty === 'MEDIUM' && targetLength !== 2) {
+                   // 3L/4L Medium -> Reset to start of letter
+                    const currentLetter = currentItem.word[0];
+                    const startIndexOfLetter = deck.findIndex(item => item.word.startsWith(currentLetter));
+                    if (startIndexOfLetter !== -1) {
+                       nextIndex = startIndexOfLetter;
+                    }
+                    shouldPenalize = true;
+               }
+           } else if (targetLength !== 'ALL' && difficulty === 'HARD') {
+               // Random Hard (if not ALL)
+               nextIndex = 0;
+               shouldPenalize = true;
+           }
+
+           if (shouldPenalize) {
+               // Create snapshot
+               const snapshot: ChallengeSnapshot = {
+                   deck,
+                   index: nextIndex,
+                   streak: 0,
+                   targetLength,
+                   order
+               };
+               
+               // Mock WordEntry for Fake Word
+               const fakeEntry: WordEntry = {
+                   w: currentItem.word,
+                   d: "This is not a valid CSW24 word.",
+                   m: "Phony!"
+               };
+               
+               onIncorrectReal(fakeEntry, snapshot);
+           } else {
+               setStreak(0);
+               nextWord();
+           }
         }, 800);
       }
     }

@@ -280,9 +280,17 @@ const App: React.FC = () => {
           handleStartTraining(selectedLength, currentLetter, nextDiff);
       } else {
           // CONTINUE
+          // Special Case: 2-Letter Words are a single batch.
+          // "Continue" should always go to 3L Easy.
+          if (selectedLength === 2) {
+             handleStartTraining(3, 'A', 'EASY');
+             return;
+          }
+
           if (nextLetter) {
               handleStartTraining(selectedLength, nextLetter);
           } else {
+              // End of Alphabet
               setMode(AppMode.HOME);
           }
       }

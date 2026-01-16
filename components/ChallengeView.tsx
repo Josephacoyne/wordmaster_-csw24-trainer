@@ -55,7 +55,7 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
       setDeckIndex(initialState.index);
       setStreak(initialState.streak);
       setTargetLength(initialState.targetLength);
-      setOrder(initialState.order);
+      setOrder(initialState.order || 'ALPHA');
       setIsPlaying(true);
       setResult(null);
       setIsComplete(false);
@@ -227,25 +227,21 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
            let shouldPenalize = false;
            let nextIndex = deckIndex;
            
-           if (order === 'ALPHA') {
-               if (difficulty === 'HARD') {
-                   nextIndex = 0;
-                   shouldPenalize = true;
-               } else if (difficulty === 'MEDIUM' && targetLength !== 2) {
-                   // 3L/4L Medium -> Reset to start of letter
-                    const currentLetter = currentItem.word[0];
-                    const startIndexOfLetter = deck.findIndex(item => item.word.startsWith(currentLetter));
-                    if (startIndexOfLetter !== -1) {
-                       nextIndex = startIndexOfLetter;
-                    }
-                    shouldPenalize = true;
-               }
-           } else if (targetLength !== 'ALL' && difficulty === 'HARD') {
-               // Random Hard (if not ALL)
+           // Universal Hard Mode Rule: Always reset to 0
+           if (difficulty === 'HARD') {
                nextIndex = 0;
                shouldPenalize = true;
+           } 
+           // Medium Mode Rule (3L/4L Alpha): Reset to start of letter
+           else if (difficulty === 'MEDIUM' && order === 'ALPHA' && targetLength !== 2) {
+                const currentLetter = currentItem.word[0];
+                const startIndexOfLetter = deck.findIndex(item => item.word.startsWith(currentLetter));
+                if (startIndexOfLetter !== -1) {
+                   nextIndex = startIndexOfLetter;
+                }
+                shouldPenalize = true;
            }
-
+           
            if (shouldPenalize) {
                // Create snapshot
                const snapshot: ChallengeSnapshot = {

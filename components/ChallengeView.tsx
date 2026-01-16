@@ -65,13 +65,7 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   // Auto Start Effect
   useEffect(() => {
     if (autoStartLength) {
-        handleStart(autoStartLength, true); // Force restart implies ignore saved state? 
-        // Actually, if we are passing autoStartLength from a "Continue" button, we usually mean START NEW.
-        // So forceRestart = true.
-        // But let's check if there is saved progress for this new level?
-        // App.tsx clears saved progress for the target level in `handleStartNewLevel`.
-        // So `savedProgress` for this level should be undefined.
-        // So `handleStart` will naturally start new.
+        handleStart(autoStartLength, true);
     }
   }, [autoStartLength]);
 
@@ -128,7 +122,6 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
 
   const handleStart = (len: WordLength, forceRestart: boolean = false) => {
     // Check for saved progress first
-    // Note for ALL: we used key 'ALL' in App.tsx handleBogey.
     const saveKey = len === 'ALL' ? 'ALL' : `${difficulty}-${len}`;
     const saved = savedProgress[saveKey];
 
@@ -190,13 +183,9 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
            let nextStreak = 0;
 
            if (order === 'ALPHA') {
-              // 2L "Medium" behaves like Easy (resume)
-              // 3L/4L Medium resets to letter.
-              
               if (difficulty === 'MEDIUM') {
                  if (targetLength === 2) {
                      // 2L Medium -> Acts like Easy (Resume)
-                     // Do nothing to nextIndex
                  } else {
                      // 3L/4L Medium -> Reset to Start of Letter
                      const currentLetter = currentItem.word[0];
@@ -212,14 +201,9 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
               // EASY: Do nothing (Resume from current spot = deckIndex)
            } else {
               // RANDOM (Free For All)
-              // "Free For All shouldn't be affected by Easy, Medium, Hard - it should act like it does now on Easy."
-              // So for ALL, we ALWAYS resume.
-              
               if (targetLength === 'ALL') {
                   // Resume (do nothing)
               } else {
-                  // Standard Random Logic (if any non-ALL random existed)
-                  // But currently only ALL is random.
                   if (difficulty === 'HARD') {
                      nextIndex = 0;
                   }
@@ -258,19 +242,27 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   if (!isPlaying) {
     return (
       <div className="flex flex-col h-full bg-slate-50 p-4">
+        {/* Header - Now shows standard title */}
         <div className="flex items-center justify-between mb-4">
            <button onClick={onExit} className="p-2 bg-white rounded-full shadow-sm text-slate-400">
              <ArrowLeft size={20} />
            </button>
-           
-           {/* Difficulty Toggle instead of Trophy */}
-           <div className="bg-white p-1 rounded-xl shadow-sm flex gap-1">
+           <h2 className="font-black text-lg text-slate-700">CHALLENGE SETUP</h2>
+           <div className="w-10" /> 
+        </div>
+
+        <div className="flex-1 flex flex-col justify-center gap-6 max-w-sm mx-auto w-full">
+          <div className="text-center mb-6">
+            <h3 className="text-3xl font-black text-indigo-600 mb-4">Choose your Arena</h3>
+            
+            {/* Large Difficulty Toggle (Replaces Trophy) */}
+             <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 flex gap-1 mx-auto w-full max-w-xs mb-2">
               {(['EASY', 'MEDIUM', 'HARD'] as Difficulty[]).map(d => (
                   <button
                     key={d}
                     onClick={() => setDifficulty(d)}
-                    className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
-                        difficulty === d ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-50'
+                    className={`flex-1 py-3 rounded-xl font-black text-xs sm:text-sm transition-all ${
+                        difficulty === d ? 'bg-slate-800 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'
                     }`}
                   >
                     {d}
@@ -278,14 +270,7 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
               ))}
            </div>
            
-           <div className="w-10" /> 
-        </div>
-
-        <div className="flex-1 flex flex-col justify-center gap-6 max-w-sm mx-auto w-full">
-          <div className="text-center mb-2">
-            <Trophy size={48} className="mx-auto text-yellow-500 mb-4" />
-            <h3 className="text-2xl font-black text-slate-800 mb-1">Choose your Arena</h3>
-            <p className="text-slate-500 font-medium">Select challenge deck</p>
+            <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-2">Current Difficulty</p>
           </div>
 
           <div className="flex flex-col gap-3">

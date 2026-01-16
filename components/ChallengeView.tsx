@@ -4,6 +4,7 @@ import { X, Trophy, ArrowLeft, ArrowRight, Star, Gamepad2, PlayCircle, RotateCcw
 
 interface ChallengeViewProps {
   difficulty: Difficulty;
+  setDifficulty: (diff: Difficulty) => void;
   onIncorrectReal: (word: WordEntry, snapshot: ChallengeSnapshot) => void;
   fullDictionary: WordEntry[];
   fakes: Record<number, string[]>;
@@ -13,10 +14,13 @@ interface ChallengeViewProps {
   initialState?: ChallengeSnapshot | null;
   onStartNewLevel: (len: WordLength, diff: Difficulty) => void;
   savedProgress?: Record<string, ChallengeSnapshot>; // Key: "DIFFICULTY-LENGTH"
+  autoStartLength?: WordLength | null;
+  percentages: Record<number, number>;
 }
 
 const ChallengeView: React.FC<ChallengeViewProps> = ({ 
   difficulty,
+  setDifficulty,
   onIncorrectReal, 
   fullDictionary = [], 
   fakes,
@@ -25,14 +29,13 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   onUpdateHighScore,
   initialState,
   onStartNewLevel,
-  savedProgress = {}
+  savedProgress = {},
+  autoStartLength,
+  percentages
 }) => {
   // Setup State
   const [isPlaying, setIsPlaying] = useState(false);
   const [targetLength, setTargetLength] = useState<WordLength | null>(null);
-  
-  // order is now implicit based on length (2/3/4 = ALPHA, ALL = RANDOM)
-  // But we store it in state to track it for snapshots
   const [order, setOrder] = useState<ChallengeOrder>('ALPHA');
 
   // Game State
@@ -59,6 +62,19 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
     }
   }, [initialState]);
 
+  // Auto Start Effect
+  useEffect(() => {
+    if (autoStartLength) {
+        handleStart(autoStartLength, true); // Force restart implies ignore saved state? 
+        // Actually, if we are passing autoStartLength from a "Continue" button, we usually mean START NEW.
+        // So forceRestart = true.
+        // But let's check if there is saved progress for this new level?
+        // App.tsx clears saved progress for the target level in `handleStartNewLevel`.
+        // So `savedProgress` for this level should be undefined.
+        // So `handleStart` will naturally start new.
+    }
+  }, [autoStartLength]);
+
   const buildDeck = (len: WordLength): { items: ChallengeItem[], mode: ChallengeOrder } => {
     let mode: ChallengeOrder = 'ALPHA';
     
@@ -67,9 +83,6 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
 
     if (len === 'ALL') {
       mode = 'RANDOM';
-      // Pick subset or all? 
-      // "Free For All - that can be random as long as it doesn't repeat too easily."
-      // Let's take ALL words. It's about 7000 words.
       reals = fullDictionary.filter(w => w.w.length >= 2 && w.w.length <= 4);
       fakeWords = [...(fakes[2] || []), ...(fakes[3] || []), ...(fakes[4] || [])];
     } else {
@@ -115,7 +128,8 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
 
   const handleStart = (len: WordLength, forceRestart: boolean = false) => {
     // Check for saved progress first
-    const saveKey = `${difficulty}-${len}`;
+    // Note for ALL: we used key 'ALL' in App.tsx handleBogey.
+    const saveKey = len === 'ALL' ? 'ALL' : `${difficulty}-${len}`;
     const saved = savedProgress[saveKey];
 
     if (saved && !forceRestart) {
@@ -168,21 +182,28 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
       setResult('WRONG');
       // Bogey if they missed a real word
       if (currentItem.isReal && currentItem.data) {
-        // Need to capture data for closure
         const wordData = currentItem.data;
         
         // --- FAILURE PENALTY LOGIC ---
         setTimeout(() => {
            let nextIndex = deckIndex;
-           let nextStreak = 0; // Streak usually breaks on fail
+           let nextStreak = 0;
 
            if (order === 'ALPHA') {
+              // 2L "Medium" behaves like Easy (resume)
+              // 3L/4L Medium resets to letter.
+              
               if (difficulty === 'MEDIUM') {
-                 // Reset to Start of Letter
-                 const currentLetter = currentItem.word[0];
-                 const startIndexOfLetter = deck.findIndex(item => item.word.startsWith(currentLetter));
-                 if (startIndexOfLetter !== -1) {
-                    nextIndex = startIndexOfLetter;
+                 if (targetLength === 2) {
+                     // 2L Medium -> Acts like Easy (Resume)
+                     // Do nothing to nextIndex
+                 } else {
+                     // 3L/4L Medium -> Reset to Start of Letter
+                     const currentLetter = currentItem.word[0];
+                     const startIndexOfLetter = deck.findIndex(item => item.word.startsWith(currentLetter));
+                     if (startIndexOfLetter !== -1) {
+                        nextIndex = startIndexOfLetter;
+                     }
                  }
               } else if (difficulty === 'HARD') {
                  // Reset to Beginning
@@ -191,15 +212,18 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
               // EASY: Do nothing (Resume from current spot = deckIndex)
            } else {
               // RANDOM (Free For All)
-              // "Random is how it is now" -> Resets on Hard?
-              // Let's apply same logic as standard modes roughly
-              if (difficulty === 'HARD') {
-                 nextIndex = 0;
-              } 
-              // Easy/Medium continue for Random/FreeForAll? 
-              // User didn't specify medium/easy random behavior explicitly except "Random is how it is now"
-              // Standard behavior previously was just reset on failure if I recall. 
-              // But let's be generous for Free For All - maybe only Hard resets.
+              // "Free For All shouldn't be affected by Easy, Medium, Hard - it should act like it does now on Easy."
+              // So for ALL, we ALWAYS resume.
+              
+              if (targetLength === 'ALL') {
+                  // Resume (do nothing)
+              } else {
+                  // Standard Random Logic (if any non-ALL random existed)
+                  // But currently only ALL is random.
+                  if (difficulty === 'HARD') {
+                     nextIndex = 0;
+                  }
+              }
            }
 
            // Create snapshot for resumption
@@ -223,21 +247,11 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   };
 
   const handleCompletionAction = (targetLen: WordLength, targetDiff: Difficulty) => {
-    // We need to call a prop that resets state in App and starts new challenge
-    // However, App needs to know we are done with THIS challenge.
-    // Actually, onStartNewLevel will just overwrite the state in App.
     onStartNewLevel(targetLen, targetDiff);
-    
-    // We also need to reset local state if we want to play immediately, 
-    // but App will likely re-mount us or update props.
-    // If App updates props (difficulty), we need to trigger a start.
-    // Since App controls difficulty, we just tell App to change difficulty and restart.
-    // But App's handleStartTraining is for Training. We need handleStartChallenge.
-    // We passed onStartNewLevel prop.
   };
 
   const hasSavedProgress = (len: WordLength) => {
-      const saveKey = `${difficulty}-${len}`;
+      const saveKey = len === 'ALL' ? 'ALL' : `${difficulty}-${len}`;
       return !!savedProgress[saveKey];
   };
 
@@ -248,7 +262,22 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
            <button onClick={onExit} className="p-2 bg-white rounded-full shadow-sm text-slate-400">
              <ArrowLeft size={20} />
            </button>
-           <h2 className="font-black text-lg text-slate-700">CHALLENGE SETUP</h2>
+           
+           {/* Difficulty Toggle instead of Trophy */}
+           <div className="bg-white p-1 rounded-xl shadow-sm flex gap-1">
+              {(['EASY', 'MEDIUM', 'HARD'] as Difficulty[]).map(d => (
+                  <button
+                    key={d}
+                    onClick={() => setDifficulty(d)}
+                    className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                        difficulty === d ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-50'
+                    }`}
+                  >
+                    {d}
+                  </button>
+              ))}
+           </div>
+           
            <div className="w-10" /> 
         </div>
 
@@ -256,12 +285,13 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
           <div className="text-center mb-2">
             <Trophy size={48} className="mx-auto text-yellow-500 mb-4" />
             <h3 className="text-2xl font-black text-slate-800 mb-1">Choose your Arena</h3>
-            <p className="text-slate-500 font-medium">Select challenge deck ({difficulty})</p>
+            <p className="text-slate-500 font-medium">Select challenge deck</p>
           </div>
 
           <div className="flex flex-col gap-3">
             {[2, 3, 4].map((len) => {
                const saved = hasSavedProgress(len as WordLength);
+               const pct = percentages[len as number] || 0;
                return (
                <div key={len} className="flex gap-2">
                  <button
@@ -270,14 +300,14 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
                  >
                    <div className="flex items-center gap-3">
                        <span>{len} Letters</span>
-                       {saved && <span className="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-1 rounded-full uppercase tracking-wider">Resume</span>}
+                       {/* Show percentage if progress exists, otherwise just if saved */}
+                       {saved && <span className="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-1 rounded-full uppercase tracking-wider">{pct}%</span>}
                    </div>
                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
                       {saved ? <PlayCircle className="text-indigo-500" size={20} /> : <ArrowRight className="text-slate-400 group-hover:text-indigo-600" size={16} />}
                    </div>
                  </button>
                  
-                 {/* Explicit Restart Button if Saved Exists */}
                  {saved && (
                     <button 
                         onClick={() => {
@@ -295,7 +325,6 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
             
             {/* Free For All Button */}
             <div className="mt-2">
-                 {/* Check if saved for ALL */}
                  {(() => {
                     const savedAll = hasSavedProgress('ALL');
                     return (
@@ -340,7 +369,7 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
     let title = `${targetLength}L Challenge Complete!`;
     let sub = `You've mastered the ${difficulty} deck.`;
     
-    // Custom Titles/Messages based on user request
+    // Custom Titles/Messages
     if (targetLength === 2 && difficulty === 'EASY') {
        title = "2L Challenge Mode (Easy) is completed!";
     } else if (targetLength === 4 && difficulty === 'HARD') {

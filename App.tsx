@@ -53,6 +53,7 @@ const App: React.FC = () => {
   // Challenge State
   const [suspendedChallenge, setSuspendedChallenge] = useState<ChallengeSnapshot | null>(null);
   const [savedChallengeProgress, setSavedChallengeProgress] = useState<ChallengeProgressMap>({});
+  const [autoStartChallenge, setAutoStartChallenge] = useState<WordLength | null>(null);
 
   // Stats
   const [challengeHighScore, setChallengeHighScore] = useState(0);
@@ -194,6 +195,21 @@ const App: React.FC = () => {
     const count = hookMastery[difficulty].size;
     return Math.round((count / total) * 100);
   };
+  
+  // Helper for Challenge Deck Percentage
+  const getChallengePercentage = (len: WordLength) => {
+      // Free For All doesn't really have a finite deck in the same way, but let's assume 0 or track streak?
+      if (len === 'ALL') {
+          // Check saved progress for ALL
+          const saved = savedChallengeProgress[`${difficulty}-ALL`];
+          if (!saved || !saved.deck) return 0;
+          return Math.round((saved.index / saved.deck.length) * 100);
+      }
+      
+      const saved = savedChallengeProgress[`${difficulty}-${len}`];
+      if (!saved || !saved.deck) return 0;
+      return Math.round((saved.index / saved.deck.length) * 100);
+  };
 
   // --- ACTIONS: TRAINING ---
 
@@ -319,22 +335,22 @@ const App: React.FC = () => {
   // Helper to start a specific challenge level (used by completion logic)
   const handleStartNewLevel = (len: WordLength, diff: Difficulty) => {
       setDifficulty(diff);
+      
       // Clear saved progress for the NEW level to ensure fresh start
+      // Note: We MUST clear the key for the NEW difficulty.
       const key = `${diff}-${len}`;
       setSavedChallengeProgress(prev => {
          const next = { ...prev };
          delete next[key];
          return next;
       });
-      // We also need to clear suspendedChallenge if it exists to avoid hydration conflict
+      // Also clear suspended to avoid immediate hydration from a previous unrelated session
       setSuspendedChallenge(null);
       
       setAutoStartChallenge(len);
       setMode(AppMode.CHALLENGE);
   };
   
-  const [autoStartChallenge, setAutoStartChallenge] = useState<WordLength | null>(null);
-
   // --- ACTIONS: HOOKS ---
 
   const startHooks = () => {
@@ -379,14 +395,23 @@ const App: React.FC = () => {
     setBogeyWord(word);
     setBogeySource(source);
     if (snapshot) {
-      // Save to persistence immediately
-      // This ensures if they close app on Bogey screen, it's saved?
-      // Or just in state.
       setSuspendedChallenge(snapshot); 
-      
-      // Also update the persistent store
       if (snapshot.targetLength) { // ALL or 2/3/4
-          const key = `${difficulty}-${snapshot.targetLength}`;
+          // Use current difficulty unless snapshot has it? 
+          // Snapshot doesn't store difficulty, but App does.
+          // IMPORTANT: If we are in Free For All (ALL), we might be on Easy/Medium/Hard.
+          // User said "Free For All shouldn't be affected by Easy, Medium, Hard".
+          // So we should probably save it under a generic 'ALL' key or 'EASY-ALL'?
+          // Let's stick to current difficulty to be safe, but for ALL, maybe key needs to be consistent?
+          // If user switches difficulty, ALL progress might be lost if keyed by difficulty.
+          // "Picks up where you left off" implies ONE Free For All session.
+          // So for ALL, let's use a fixed key 'ALL'.
+          
+          let key = `${difficulty}-${snapshot.targetLength}`;
+          if (snapshot.targetLength === 'ALL') {
+              key = 'ALL';
+          }
+          
           setSavedChallengeProgress(prev => ({ ...prev, [key]: snapshot }));
       }
     }
@@ -556,25 +581,13 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* MODE VIEWS */}
-        {mode === AppMode.TRAINING && (
-           <TrainingView 
-             pool={activeDeck}
-             initialIndex={deckProgress}
-             currentLetter={currentLetter}
-             difficulty={difficulty}
-             fullDictionary={CSW_DICTIONARY}
-             onSuccess={handleTrainingSuccess}
-             onFail={handleTrainingFail}
-             onComplete={handleTrainingDeckComplete}
-             onSkipToLetter={(char) => handleStartTraining(selectedLength, char)}
-             onExit={handleHome}
-           />
-        )}
-
         {(mode === AppMode.CHALLENGE || (mode === AppMode.BOGEY && bogeySource === AppMode.CHALLENGE)) && (
           <ChallengeView 
+            // Key is crucial for resetting state when context changes
+            // We include difficulty and autoStartChallenge in key to force fresh mount on changes
+            key={`${difficulty}-${autoStartChallenge || 'menu'}`}
             difficulty={difficulty}
+            setDifficulty={setDifficulty}
             onIncorrectReal={(w, snapshot) => handleBogey(w, AppMode.CHALLENGE, snapshot)}
             fullDictionary={CSW_DICTIONARY}
             fakes={{
@@ -585,19 +598,18 @@ const App: React.FC = () => {
             topStreak={challengeHighScore}
             onUpdateHighScore={handleChallengeHighScore}
             onExit={handleHome}
-            initialState={suspendedChallenge || (autoStartChallenge ? null : null)} // We rely on internal check now?
-            // Actually, we modified ChallengeView to check savedProgress. 
-            // We should just pass savedProgress and let it handle resumption via menu or autoStart.
-            // If autoStart is set, we want to start immediately.
-            // But ChallengeView builds the deck.
-            // If savedProgress exists for autoStart, ChallengeView will auto-resume?
-            // Not implemented: ChallengeView's auto-start is not yet wired.
-            // But menu buttons call handleStart.
-            // We can just rely on user clicking "3L" in menu if they are "Continuing".
-            // But they clicked "Continue" in previous modal.
-            // I should wire autoStartChallenge into ChallengeView via a useEffect.
+            initialState={
+                suspendedChallenge || 
+                (autoStartChallenge ? null : savedChallengeProgress[`${difficulty}-2`] || savedChallengeProgress[`${difficulty}-3`] || savedChallengeProgress[`${difficulty}-4`] ? null : null)
+            }
             savedProgress={savedChallengeProgress}
             onStartNewLevel={handleStartNewLevel}
+            autoStartLength={autoStartChallenge}
+            percentages={{
+                2: getChallengePercentage(2),
+                3: getChallengePercentage(3),
+                4: getChallengePercentage(4)
+            }}
           />
         )}
 

@@ -63,12 +63,6 @@ const App: React.FC = () => {
     HARD: new Set()
   });
   
-  const [hookMastery, setHookMastery] = useState<MasteryState>({
-    EASY: new Set(),
-    MEDIUM: new Set(),
-    HARD: new Set()
-  });
-
   // --- INITIAL LOAD & SAVE ---
   useEffect(() => {
     // 1. Load Mastery
@@ -87,9 +81,6 @@ const App: React.FC = () => {
 
     const mWords = loadSet('endcap_mastery_words');
     if (mWords) setMasteredWords(mWords);
-
-    const mHooks = loadSet('endcap_mastery_hooks');
-    if (mHooks) setHookMastery(mHooks);
 
     // 2. Load High Score
     const savedScore = localStorage.getItem('endcap_highscore');
@@ -110,6 +101,12 @@ const App: React.FC = () => {
             setSavedChallengeProgress(JSON.parse(savedChallenge));
         } catch (e) { console.error("Failed to load challenge progress", e); }
     }
+
+    // 5. Load Hook Progress (Single Index)
+    const savedHookIndex = localStorage.getItem('endcap_hook_index');
+    if (savedHookIndex) {
+        setActiveHookIndex(parseInt(savedHookIndex, 10));
+    }
   }, []);
 
   // --- PERSISTENCE: SAVE EFFECTS ---
@@ -123,15 +120,6 @@ const App: React.FC = () => {
   }, [masteredWords]);
 
   useEffect(() => {
-    const data = {
-      EASY: Array.from(hookMastery.EASY),
-      MEDIUM: Array.from(hookMastery.MEDIUM),
-      HARD: Array.from(hookMastery.HARD)
-    };
-    localStorage.setItem('endcap_mastery_hooks', JSON.stringify(data));
-  }, [hookMastery]);
-
-  useEffect(() => {
     localStorage.setItem('endcap_highscore', challengeHighScore.toString());
   }, [challengeHighScore]);
 
@@ -142,6 +130,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('endcap_challenge_progress', JSON.stringify(savedChallengeProgress));
   }, [savedChallengeProgress]);
+
+  useEffect(() => {
+    localStorage.setItem('endcap_hook_index', activeHookIndex.toString());
+  }, [activeHookIndex]);
 
   // --- MODE SWITCHING EFFECT ---
   // When difficulty changes while in Training, update the position immediately
@@ -190,17 +182,13 @@ const App: React.FC = () => {
   };
 
   const getHookPercentage = () => {
-    const total = totalCounts[2]; 
-    if (total === 0) return 0;
-    const count = hookMastery[difficulty].size;
-    return Math.round((count / total) * 100);
+    if (allHookData.length === 0) return 0;
+    return Math.round((activeHookIndex / allHookData.length) * 100);
   };
   
   // Helper for Challenge Deck Percentage
   const getChallengePercentage = (len: WordLength) => {
-      // Free For All doesn't really have a finite deck in the same way, but let's assume 0 or track streak?
       if (len === 'ALL') {
-          // Check saved progress for ALL
           const saved = savedChallengeProgress[`${difficulty}-ALL`];
           if (!saved || !saved.deck) return 0;
           return Math.round((saved.index / saved.deck.length) * 100);
@@ -354,38 +342,27 @@ const App: React.FC = () => {
   // --- ACTIONS: HOOKS ---
 
   const startHooks = () => {
-    if (hookDeck.length > 0 && activeHookIndex < hookDeck.length) {
-       setMode(AppMode.HOOKS);
-       return;
-    }
-    const shuffled = [...allHookData].sort(() => 0.5 - Math.random());
-    setHookDeck(shuffled);
-    setActiveHookIndex(0);
+    // Reset deck to all sorted data
+    // activeHookIndex is already loaded from effect
+    setHookDeck(allHookData);
     setMode(AppMode.HOOKS);
   };
 
-  const handleHookMastery = (baseWord: string) => {
-    setHookMastery(prev => {
-      const currentSet = new Set(prev[difficulty]);
-      currentSet.add(baseWord);
-      return { ...prev, [difficulty]: currentSet };
-    });
+  const handleHookMastery = () => {
+    // Just advance. No need to track separate "Mastery" set as it's linear.
     advanceHook();
   };
 
-  const handleHookFail = () => {
-     if (difficulty === 'HARD') {
-        setActiveHookIndex(0);
-     }
-  };
-
+  // No fail handler needed for App, handled internally in View or just doesn't advance
+  
   const advanceHook = () => {
-    if (activeHookIndex < hookDeck.length - 1) {
+    if (activeHookIndex < allHookData.length - 1) {
       setActiveHookIndex(prev => prev + 1);
     } else {
-      setHookDeck([]); 
-      setActiveHookIndex(0); 
-      setMode(AppMode.HOME);
+      // Completed!
+      // Stay on last index or show completion in View?
+      // View will handle it via totalCount check
+      setActiveHookIndex(prev => prev + 1); // Go to length (out of bounds) to signal completion
     }
   };
 
@@ -397,21 +374,10 @@ const App: React.FC = () => {
     if (snapshot) {
       setSuspendedChallenge(snapshot); 
       if (snapshot.targetLength) { // ALL or 2/3/4
-          // Use current difficulty unless snapshot has it? 
-          // Snapshot doesn't store difficulty, but App does.
-          // IMPORTANT: If we are in Free For All (ALL), we might be on Easy/Medium/Hard.
-          // User said "Free For All shouldn't be affected by Easy, Medium, Hard".
-          // So we should probably save it under a generic 'ALL' key or 'EASY-ALL'?
-          // Let's stick to current difficulty to be safe, but for ALL, maybe key needs to be consistent?
-          // If user switches difficulty, ALL progress might be lost if keyed by difficulty.
-          // "Picks up where you left off" implies ONE Free For All session.
-          // So for ALL, let's use a fixed key 'ALL'.
-          
           let key = `${difficulty}-${snapshot.targetLength}`;
           if (snapshot.targetLength === 'ALL') {
               key = 'ALL';
           }
-          
           setSavedChallengeProgress(prev => ({ ...prev, [key]: snapshot }));
       }
     }
@@ -561,7 +527,7 @@ const App: React.FC = () => {
                  </div>
                  <div className="text-left">
                     <div className="font-bold text-xl">Master Hooks</div>
-                    <div className="text-xs font-medium text-slate-400">2L to 3L Connections</div>
+                    <div className="text-xs font-medium text-slate-400">Learn then Test</div>
                  </div>
               </div>
               <div className="relative z-10 font-black text-2xl text-slate-600">
@@ -579,6 +545,22 @@ const App: React.FC = () => {
               <span>Challenge Arena</span>
             </button>
           </div>
+        )}
+
+        {/* MODE VIEWS */}
+        {mode === AppMode.TRAINING && (
+           <TrainingView 
+             pool={activeDeck}
+             initialIndex={deckProgress}
+             currentLetter={currentLetter}
+             difficulty={difficulty}
+             fullDictionary={CSW_DICTIONARY}
+             onSuccess={handleTrainingSuccess}
+             onFail={handleTrainingFail}
+             onComplete={handleTrainingDeckComplete}
+             onSkipToLetter={(char) => handleStartTraining(selectedLength, char)}
+             onExit={handleHome}
+           />
         )}
 
         {(mode === AppMode.CHALLENGE || (mode === AppMode.BOGEY && bogeySource === AppMode.CHALLENGE)) && (
@@ -615,13 +597,10 @@ const App: React.FC = () => {
 
         {mode === AppMode.HOOKS && hookDeck.length > 0 && (
           <HookView 
-             data={hookDeck[activeHookIndex]}
-             difficulty={difficulty}
+             data={hookDeck[Math.min(activeHookIndex, hookDeck.length - 1)]}
              currentIndex={activeHookIndex}
              totalCount={hookDeck.length}
              onMastery={handleHookMastery} 
-             onFail={handleHookFail}
-             onNext={advanceHook}
              onExit={handleHome}
           />
         )}

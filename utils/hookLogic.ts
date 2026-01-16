@@ -51,6 +51,6 @@ export const generateHookData = (fullDictionary: WordEntry[]): HookData[] => {
     }
   });
 
-  // 4. Shuffle the deck
-  return results.sort(() => Math.random() - 0.5);
+  // 4. Sort alphabetically by the 2-letter word
+  return results.sort((a, b) => a.word.w.localeCompare(b.word.w));
 };

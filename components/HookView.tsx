@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { HookData, Difficulty } from '../types';
-import { ArrowLeft, Delete } from 'lucide-react';
+import { HookData } from '../types';
+import { ArrowLeft, Delete, Info, CheckCircle } from 'lucide-react';
 
 interface HookViewProps {
   data: HookData;
-  difficulty: Difficulty;
   currentIndex: number;
   totalCount: number;
-  onMastery: (word: string) => void;
-  onFail: () => void;
-  onNext: () => void;
+  onMastery: () => void;
   onExit: () => void;
 }
 
@@ -19,15 +16,14 @@ type HookQuestion = {
   definition: string;
 };
 
-const LetterButton = ({ k, highlightedKeys, onPress }: { k: string, highlightedKeys: Set<string>, onPress: (k: string) => void }) => {
-  const isPossible = highlightedKeys.has(k);
+const LetterButton = ({ k, isHighlighted, onPress }: { k: string, isHighlighted: boolean, onPress: (k: string) => void }) => {
   return (
     <button
       onClick={() => onPress(k)}
       onContextMenu={(e) => e.preventDefault()}
       className={`aspect-[3/4] rounded-lg font-bold text-xl transition-all flex items-center justify-center select-none touch-manipulation shadow-sm active:scale-95 active:shadow-inner ${
-         isPossible 
-           ? 'bg-yellow-100 border-2 border-yellow-300 text-yellow-800 hover:bg-yellow-200' 
+         isHighlighted 
+           ? 'bg-indigo-100 border-2 border-indigo-400 text-indigo-900 hover:bg-indigo-200' 
            : 'bg-white border-2 border-slate-200 text-slate-700 hover:bg-slate-50 active:bg-slate-100'
       }`}
     >
@@ -38,17 +34,17 @@ const LetterButton = ({ k, highlightedKeys, onPress }: { k: string, highlightedK
 
 const HookView: React.FC<HookViewProps> = ({ 
   data, 
-  difficulty, 
   currentIndex,
   totalCount,
   onMastery,
-  onFail,
-  onNext,
   onExit
 }) => {
+  const [phase, setPhase] = useState<'LEARN' | 'TEST'>('LEARN');
+  const [showIntroModal, setShowIntroModal] = useState(false);
   const [qIndex, setQIndex] = useState(0);
   const [feedback, setFeedback] = useState<{ msg: string; type: 'neutral' | 'success' | 'error' | 'warning' }>({ msg: '', type: 'neutral' });
   const [selectedChar, setSelectedChar] = useState<string | null>(null);
+  const [mistakesInCurrentRun, setMistakesInCurrentRun] = useState(false);
 
   // Logic: Flatten hooks
   const questions = useMemo<HookQuestion[]>(() => {
@@ -61,124 +57,161 @@ const HookView: React.FC<HookViewProps> = ({
 
   const currentQ = questions[qIndex];
 
-  // Logic: Calculate ALL valid hooks for the current side (for Easy Mode highlighting)
+  // Logic: Calculate ALL valid hooks for the current side (for Highlighting in Learn phase)
   const validForCurrentSide = useMemo(() => {
     if (!currentQ || !data) return new Set<string>();
     const source = currentQ.type === 'FRONT' ? data.frontHooks : data.backHooks;
     return new Set(source.map(h => h.char));
   }, [currentQ, data]);
 
+  // Reset state when data changes (new word)
   useEffect(() => {
     setQIndex(0);
+    setPhase('LEARN');
     setFeedback({ msg: '', type: 'neutral' });
     setSelectedChar(null);
+    setMistakesInCurrentRun(false);
   }, [data]);
-
-  const validateAnswer = (char: string) => {
-    // 1. Is it the correct answer for THIS definition?
-    if (char === currentQ.char) {
-      setFeedback({ msg: 'Correct!', type: 'success' });
-      setTimeout(() => {
-        advance();
-      }, 500);
-      return;
-    } 
-
-    // 2. Is it a valid hook for this word, just not the one asked for?
-    const isAltValid = validForCurrentSide.has(char);
-
-    if (isAltValid) {
-        setFeedback({ msg: 'Valid hook, but wrong definition!', type: 'warning' });
-        // In Hard Mode, strict fail applies even for valid-but-wrong-def
-        if (difficulty === 'HARD') {
-            setFeedback({ msg: 'Strict Fail! Resetting...', type: 'error' });
-            setTimeout(() => strictFailReset(), 1000);
-        } else {
-            // Easy/Medium: Just clear after delay
-            setTimeout(() => {
-                setFeedback({ msg: '', type: 'neutral' });
-                setSelectedChar(null);
-            }, 1000);
-        }
-    } else {
-      // 3. Completely Invalid
-      setFeedback({ msg: difficulty === 'HARD' ? 'Perfect Score Needed! Resetting...' : 'Incorrect', type: 'error' });
-      
-      if (difficulty === 'HARD') {
-         setTimeout(() => strictFailReset(), 1000);
-      } else {
-         setTimeout(() => {
-             setFeedback({ msg: '', type: 'neutral' });
-             setSelectedChar(null);
-         }, 500);
-      }
-    }
-  };
-
-  const strictFailReset = () => {
-      // For Master Hooks "Resetting" means going back to the start of THIS WORD (qIndex 0)
-      // It does NOT mean failing the whole deck/mode unless you want that behavior.
-      // User said "resets to the begining of the word (not the whole thing just the word they're on)"
-      setFeedback({ msg: '', type: 'neutral' });
-      setSelectedChar(null);
-      setQIndex(0); 
-  };
 
   const handlePress = (char: string) => {
     if (!currentQ || feedback.type === 'success') return;
-    
-    // In Hard Mode, select the char but don't validate yet
-    if (difficulty === 'HARD') {
-        setSelectedChar(char);
+
+    // Check correctness
+    if (char === currentQ.char) {
+      // Correct!
+      setFeedback({ msg: 'Correct!', type: 'success' });
+      setTimeout(() => {
+        advance();
+      }, 400);
     } else {
-        // Easy/Medium: validate immediately
-        validateAnswer(char);
-    }
-  };
-
-  const handleEnter = () => {
-      if (selectedChar) {
-          validateAnswer(selectedChar);
+      // Wrong
+      if (phase === 'TEST') {
+         setMistakesInCurrentRun(true);
+         setFeedback({ msg: 'Incorrect', type: 'error' });
+      } else {
+         // Learn phase: just visual feedback, no penalty
+         setFeedback({ msg: 'Try again', type: 'warning' });
       }
-  };
-
-  const handleDelete = () => {
-      setSelectedChar(null);
+      
+      // Clear feedback quickly
+      setTimeout(() => {
+          if (feedback.type !== 'success') {
+             setFeedback({ msg: '', type: 'neutral' });
+          }
+      }, 600);
+    }
   };
 
   const advance = () => {
     setFeedback({ msg: '', type: 'neutral' });
     setSelectedChar(null);
+    
     if (qIndex < questions.length - 1) {
       setQIndex(prev => prev + 1);
     } else {
-      // Done with this word
-      onMastery(data.word.w);
+      // End of questions for this phase
+      if (phase === 'LEARN') {
+         // Transition to TEST
+         if (currentIndex === 0) {
+             setShowIntroModal(true); // Barrier for first word only
+         } else {
+             startTest();
+         }
+      } else {
+         // TEST Phase Complete
+         if (mistakesInCurrentRun) {
+             // Failed Test
+             setFeedback({ msg: 'Mistakes made. Restarting Test...', type: 'error' });
+             setTimeout(() => {
+                 startTest(); // Restart Test
+             }, 1500);
+         } else {
+             // Passed Test!
+             onMastery();
+         }
+      }
     }
   };
 
+  const startTest = () => {
+      setPhase('TEST');
+      setQIndex(0);
+      setMistakesInCurrentRun(false);
+      setFeedback({ msg: 'Test Phase', type: 'neutral' });
+      setShowIntroModal(false);
+  };
+
+  // Completion Check (End of Deck)
+  if (currentIndex >= totalCount) {
+      return (
+        <div className="fixed inset-0 flex items-center justify-center bg-slate-50 p-4">
+           <div className="bg-white rounded-3xl p-8 shadow-2xl w-full max-w-sm text-center animate-in zoom-in">
+              <div className="w-24 h-24 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                 <CheckCircle size={48} />
+              </div>
+              <h2 className="text-3xl font-black text-slate-800 mb-2">Completed!</h2>
+              <p className="text-slate-500 font-medium text-lg mb-8">
+                 Congratulations, you are a Hook Master!
+              </p>
+              <button onClick={onExit} className="w-full py-4 rounded-xl bg-indigo-600 text-white font-bold text-lg hover:bg-indigo-700 transition-all shadow-lg">
+                 Return Home
+              </button>
+           </div>
+        </div>
+      );
+  }
+
   if (!currentQ && questions.length > 0) return <div>Loading...</div>;
-  // Auto-skip if empty
-  if (questions.length === 0 && data) { setTimeout(onNext, 100); return <div>No Hooks</div>; }
+  if (questions.length === 0 && data) { setTimeout(onMastery, 100); return <div>No Hooks</div>; }
 
   return (
     <div className="fixed inset-0 flex flex-col h-[100svh] w-full bg-slate-50 overflow-hidden">
+       {/* Intro Modal for Test Phase */}
+       {showIntroModal && (
+           <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+               <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-xs text-center w-full">
+                   <div className="w-16 h-16 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                       <Info size={32} />
+                   </div>
+                   <h3 className="text-xl font-black text-slate-800 mb-2">Pass The Test To Progress</h3>
+                   <p className="text-slate-500 mb-6 text-sm leading-relaxed">
+                       You've learned the hooks. Now prove you know them without hints. 
+                       <br/><br/>
+                       <span className="font-bold text-rose-500">One mistake and you restart the test!</span>
+                   </p>
+                   <button 
+                     onClick={startTest}
+                     className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all"
+                   >
+                       I'm Ready
+                   </button>
+               </div>
+           </div>
+       )}
+
+       {/* Header */}
        <div className="flex items-center justify-between p-3 bg-white shadow-sm z-10 shrink-0 h-16">
          <button onClick={onExit} className="p-2 text-slate-400 hover:text-slate-600">
            <ArrowLeft size={24} />
          </button>
          <div className="flex flex-col items-center">
-           <span className="text-sm font-bold text-slate-400 uppercase tracking-wide">Hook Mastery</span>
+           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+               {phase === 'LEARN' ? 'Learning Phase' : 'Test Phase'}
+           </span>
            <span className="text-lg font-black text-indigo-600">{currentIndex + 1} / {totalCount}</span>
          </div>
-         {/* Placeholder for symmetry or skip button if needed, but Hook mode has auto-advance */}
          <div className="w-12" />
        </div>
 
+       {/* Game Area */}
        <div className="flex-1 flex flex-col items-center justify-center p-2 min-h-0">
-          <div className="bg-white rounded-[1.5rem] p-3 shadow-xl w-full max-w-xs relative overflow-hidden border-2 border-slate-100 flex flex-col items-center justify-center max-h-full">
+          <div className={`bg-white rounded-[1.5rem] p-3 shadow-xl w-full max-w-xs relative overflow-hidden border-2 flex flex-col items-center justify-center max-h-full transition-colors duration-500 ${
+              phase === 'TEST' ? 'border-amber-100 shadow-amber-100/50' : 'border-slate-100'
+          }`}>
              
-             <div className="absolute top-3 font-black text-[9px] text-indigo-300 tracking-widest uppercase bg-indigo-50 px-2 py-0.5 rounded-full">
+             <div className={`absolute top-3 font-black text-[9px] tracking-widest uppercase px-2 py-0.5 rounded-full ${
+                 phase === 'TEST' ? 'bg-amber-100 text-amber-600' : 'bg-indigo-50 text-indigo-400'
+             }`}>
                 {currentQ.type} HOOK
              </div>
 
@@ -201,10 +234,9 @@ const HookView: React.FC<HookViewProps> = ({
                   <div className={`w-12 h-16 rounded-xl border-b-4 flex items-center justify-center text-4xl font-black transition-all ${
                      feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 
                      feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
-                     feedback.type === 'warning' ? 'border-amber-500 text-amber-600 bg-amber-50' :
-                     'border-indigo-300 text-indigo-600 bg-indigo-50'
+                     'border-indigo-100 text-indigo-400 bg-indigo-50'
                   }`}>
-                     {feedback.type === 'success' ? currentQ.char : (difficulty === 'HARD' ? selectedChar || '' : '')}
+                     {feedback.type === 'success' ? currentQ.char : '?'}
                   </div>
                 )}
                 
@@ -216,77 +248,41 @@ const HookView: React.FC<HookViewProps> = ({
                   <div className={`w-12 h-16 rounded-xl border-b-4 flex items-center justify-center text-4xl font-black transition-all ${
                      feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 
                      feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
-                     feedback.type === 'warning' ? 'border-amber-500 text-amber-600 bg-amber-50' :
-                     'border-indigo-300 text-indigo-600 bg-indigo-50'
+                     'border-indigo-100 text-indigo-400 bg-indigo-50'
                   }`}>
-                     {feedback.type === 'success' ? currentQ.char : (difficulty === 'HARD' ? selectedChar || '' : '')}
+                     {feedback.type === 'success' ? currentQ.char : '?'}
                   </div>
                 )}
              </div>
              
              <div className="w-full bg-slate-100 h-1.5 rounded-full mt-1 overflow-hidden shrink-0">
-                <div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${((qIndex) / questions.length) * 100}%` }} />
+                <div 
+                    className={`h-full transition-all duration-300 ${phase === 'TEST' ? 'bg-amber-500' : 'bg-indigo-500'}`} 
+                    style={{ width: `${((qIndex) / questions.length) * 100}%` }} 
+                />
              </div>
           </div>
        </div>
 
+       {/* Keyboard */}
        <div className="bg-white p-2 pb-4 border-t border-slate-100 shrink-0">
         <div className="max-w-md mx-auto grid grid-cols-7 gap-1">
-           {/* Row 1: A-G */}
            {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(k => (
-              <LetterButton key={k} k={k} highlightedKeys={difficulty === 'EASY' ? validForCurrentSide : new Set()} onPress={handlePress} />
+              <LetterButton key={k} k={k} isHighlighted={phase === 'LEARN' && validForCurrentSide.has(k)} onPress={handlePress} />
            ))}
-
-           {/* Row 2: H-N */}
            {['H', 'I', 'J', 'K', 'L', 'M', 'N'].map(k => (
-              <LetterButton key={k} k={k} highlightedKeys={difficulty === 'EASY' ? validForCurrentSide : new Set()} onPress={handlePress} />
+              <LetterButton key={k} k={k} isHighlighted={phase === 'LEARN' && validForCurrentSide.has(k)} onPress={handlePress} />
            ))}
-
-           {/* Row 3: O-U */}
            {['O', 'P', 'Q', 'R', 'S', 'T', 'U'].map(k => (
-              <LetterButton key={k} k={k} highlightedKeys={difficulty === 'EASY' ? validForCurrentSide : new Set()} onPress={handlePress} />
+              <LetterButton key={k} k={k} isHighlighted={phase === 'LEARN' && validForCurrentSide.has(k)} onPress={handlePress} />
            ))}
-
-           {/* Row 4: V-Z + DEL + ENTER */}
            {['V', 'W', 'X', 'Y', 'Z'].map(k => (
-              <LetterButton key={k} k={k} highlightedKeys={difficulty === 'EASY' ? validForCurrentSide : new Set()} onPress={handlePress} />
+              <LetterButton key={k} k={k} isHighlighted={phase === 'LEARN' && validForCurrentSide.has(k)} onPress={handlePress} />
            ))}
-
-           {/* DELETE BUTTON (Column 6 of Row 4) */}
-           <button 
-              onClick={handleDelete}
-              className={`rounded-lg bg-slate-100 border border-slate-200 text-slate-500 font-black text-xs hover:bg-slate-200 active:scale-95 flex flex-col items-center justify-center transition-all ${
-                difficulty !== 'HARD' ? 'col-span-2 aspect-auto' : 'aspect-[3/4]'
-              }`}
-              aria-label="Delete"
-            >
-              <Delete size={20} />
-              <span className="text-[10px] mt-0.5">DEL</span>
-            </button>
-
-            {/* ENTER BUTTON (Column 7 of Row 4 - Only in Hard Mode) */}
-            {difficulty === 'HARD' && (
-                <button 
-                  onClick={handleEnter}
-                  disabled={!selectedChar}
-                  className={`aspect-[3/4] rounded-lg border font-black text-xs flex flex-col items-center justify-center transition-all ${
-                     selectedChar 
-                       ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-md shadow-indigo-200' 
-                       : 'bg-slate-50 border-slate-200 text-slate-300'
-                  }`}
-                  aria-label="Enter"
-                >
-                  <div className="w-5 h-5 flex items-center justify-center border-2 border-current rounded-md mb-0.5">
-                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 10 4 15 9 20"></polyline><path d="M20 4v7a4 4 0 0 1-4 4H4"></path></svg>
-                  </div>
-                  <span className="text-[10px]">ENT</span>
-                </button>
-            )}
         </div>
       </div>
     </div>
   );
 };
-// Updated HookView with 4-row keyboard and Hard Mode Enter logic
 
 export default HookView;

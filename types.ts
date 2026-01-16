@@ -1,10 +1,9 @@
-// Define what a "Word" looks like in our app
 export interface WordEntry {
   w: string; // The actual word (e.g., "AA")
   d?: string; // The definition (optional)
+  m?: string; // Memory hook/mnemonic
 }
 
-// Define the shape of our Hook Data
 export interface HookDetail {
   char: string;       // The valid letter (e.g., 'B')
   definition: string; // The definition of the NEW word (e.g., definition of 'BAA')
@@ -16,7 +15,6 @@ export interface HookData {
   backHooks: HookDetail[];  // List of valid back letters (H, L, S, etc.)
 }
 
-// ✅ CHANGED: This is now an Enum so 'AppMode.HOME' works in your code
 export enum AppMode {
   HOME = 'HOME',
   TRAINING = 'TRAINING',
@@ -27,3 +25,20 @@ export enum AppMode {
 
 export type WordLength = 2 | 3 | 4;
 export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD';
+
+// Challenge Types
+export type ChallengeOrder = 'RANDOM' | 'ALPHA';
+
+export interface ChallengeItem {
+  word: string;
+  isReal: boolean;
+  data?: WordEntry;
+}
+
+export interface ChallengeSnapshot {
+  deck: ChallengeItem[];
+  index: number;
+  streak: number;
+  targetLength: WordLength | null;
+  order: ChallengeOrder;
+}

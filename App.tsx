@@ -9,7 +9,8 @@ import {
   WordEntry, 
   WordLength, 
   Difficulty, 
-  HookData 
+  HookData,
+  ChallengeSnapshot
 } from './types';
 import { 
   CSW_DICTIONARY, 
@@ -47,6 +48,9 @@ const App: React.FC = () => {
   // Hook State
   const [hookDeck, setHookDeck] = useState<HookData[]>([]);
   const [activeHookIndex, setActiveHookIndex] = useState(0);
+
+  // Challenge State (Suspended)
+  const [suspendedChallenge, setSuspendedChallenge] = useState<ChallengeSnapshot | null>(null);
 
   // Stats
   const [challengeHighScore, setChallengeHighScore] = useState(0);
@@ -355,9 +359,12 @@ const App: React.FC = () => {
 
   // --- ACTIONS: OTHER ---
 
-  const handleBogey = (word: WordEntry, source: AppMode) => {
+  const handleBogey = (word: WordEntry, source: AppMode, snapshot?: ChallengeSnapshot) => {
     setBogeyWord(word);
     setBogeySource(source);
+    if (snapshot) {
+      setSuspendedChallenge(snapshot);
+    }
     setMode(AppMode.BOGEY);
   };
 
@@ -366,6 +373,11 @@ const App: React.FC = () => {
       setChallengeHighScore(score);
     }
   };
+
+  const handleHome = () => {
+    setMode(AppMode.HOME);
+    setSuspendedChallenge(null); // Clear suspended challenge
+  }
 
   const DifficultyButton = ({ level }: { level: Difficulty }) => (
     <button
@@ -530,14 +542,14 @@ const App: React.FC = () => {
              onFail={handleTrainingFail}
              onComplete={handleTrainingDeckComplete}
              onSkipToLetter={(char) => handleStartTraining(selectedLength, char)}
-             onExit={() => setMode(AppMode.HOME)}
+             onExit={handleHome}
            />
         )}
 
-        {mode === AppMode.CHALLENGE && (
+        {(mode === AppMode.CHALLENGE || (mode === AppMode.BOGEY && bogeySource === AppMode.CHALLENGE)) && (
           <ChallengeView 
             difficulty={difficulty}
-            onIncorrectReal={(w) => handleBogey(w, AppMode.CHALLENGE)}
+            onIncorrectReal={(w, snapshot) => handleBogey(w, AppMode.CHALLENGE, snapshot)}
             fullDictionary={CSW_DICTIONARY}
             fakes={{
               2: FAKE_2_LETTERS,
@@ -546,7 +558,8 @@ const App: React.FC = () => {
             }}
             topStreak={challengeHighScore}
             onUpdateHighScore={handleChallengeHighScore}
-            onExit={() => setMode(AppMode.HOME)}
+            onExit={handleHome}
+            initialState={suspendedChallenge}
           />
         )}
 
@@ -559,7 +572,7 @@ const App: React.FC = () => {
              onMastery={handleHookMastery} 
              onFail={handleHookFail}
              onNext={advanceHook}
-             onExit={() => setMode(AppMode.HOME)}
+             onExit={handleHome}
           />
         )}
 

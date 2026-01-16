@@ -121,9 +121,9 @@ const HookView: React.FC<HookViewProps> = ({
          // TEST Phase Complete
          if (mistakesInCurrentRun) {
              // Failed Test
-             setFeedback({ msg: 'Mistakes made. Restarting Test...', type: 'error' });
+             setFeedback({ msg: 'Mistakes made. Back to Learning...', type: 'error' });
              setTimeout(() => {
-                 startTest(); // Restart Test
+                 startLearn(); // Go back to Learn Phase
              }, 1500);
          } else {
              // Passed Test!
@@ -131,6 +131,14 @@ const HookView: React.FC<HookViewProps> = ({
          }
       }
     }
+  };
+
+  const startLearn = () => {
+      setPhase('LEARN');
+      setQIndex(0);
+      setMistakesInCurrentRun(false);
+      setFeedback({ msg: 'Learning Phase', type: 'neutral' });
+      setShowIntroModal(false);
   };
 
   const startTest = () => {
@@ -177,7 +185,7 @@ const HookView: React.FC<HookViewProps> = ({
                    <p className="text-slate-500 mb-6 text-sm leading-relaxed">
                        You've learned the hooks. Now prove you know them without hints. 
                        <br/><br/>
-                       <span className="font-bold text-rose-500">One mistake and you restart the test!</span>
+                       <span className="font-bold text-rose-500">One mistake and you return to learning!</span>
                    </p>
                    <button 
                      onClick={startTest}

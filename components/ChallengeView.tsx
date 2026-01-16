@@ -44,6 +44,10 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   const [streak, setStreak] = useState(0);
   const [result, setResult] = useState<'CORRECT' | 'WRONG' | null>(null);
   const [isComplete, setIsComplete] = useState(false);
+  
+  // Letter Progression State
+  const [showLetterModal, setShowLetterModal] = useState(false);
+  const [completedLetter, setCompletedLetter] = useState<string | null>(null);
 
   // Derived
   const currentItem = deck[deckIndex];
@@ -151,6 +155,19 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
 
   const nextWord = () => {
     setResult(null);
+
+    // Check Letter Boundary for 3L/4L Alpha
+    if (order === 'ALPHA' && (targetLength === 3 || targetLength === 4) && deckIndex < deck.length - 1) {
+        const currentLetter = deck[deckIndex].word[0];
+        const nextLetter = deck[deckIndex + 1].word[0];
+        
+        if (currentLetter !== nextLetter) {
+            setCompletedLetter(currentLetter);
+            setShowLetterModal(true);
+            return;
+        }
+    }
+
     if (deckIndex >= deck.length - 1) {
       setIsComplete(true);
     } else {
@@ -271,6 +288,50 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
 
   const handleCompletionAction = (targetLen: WordLength, targetDiff: Difficulty) => {
     onStartNewLevel(targetLen, targetDiff);
+  };
+
+  const handleLetterCompletionAction = (action: 'REINFORCE' | 'CONTINUE') => {
+      setShowLetterModal(false);
+      
+      if (action === 'REINFORCE') {
+          // Stay on current letter, increase difficulty
+          let nextDiff: Difficulty = difficulty;
+          if (difficulty === 'EASY') nextDiff = 'MEDIUM';
+          else if (difficulty === 'MEDIUM') nextDiff = 'HARD';
+          
+          setDifficulty(nextDiff);
+          
+          if (completedLetter) {
+            // Find start of current letter
+            const start = deck.findIndex(i => i.word.startsWith(completedLetter));
+            // Find end of current letter
+            let end = start;
+            while(end < deck.length && deck[end].word.startsWith(completedLetter)) {
+                end++;
+            }
+            
+            // Shuffle this segment
+            const group = deck.slice(start, end);
+            for (let i = group.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [group[i], group[j]] = [group[j], group[i]];
+            }
+            
+            // Insert back into deck
+            const newDeck = [...deck];
+            newDeck.splice(start, group.length, ...group);
+            setDeck(newDeck);
+            
+            // Reset index to start of this letter
+            setDeckIndex(start);
+            // Don't reset streak? Or maybe do? Usually reinforce implies new attempt.
+            // Streak is global for challenge though. Let's keep it unless it feels wrong.
+          }
+      } else {
+          // Continue to next letter, reset difficulty to EASY
+          setDifficulty('EASY');
+          setDeckIndex(prev => prev + 1);
+      }
   };
 
   const hasSavedProgress = (len: WordLength) => {
@@ -513,7 +574,56 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
           </div>
       </div>
 
-      {/* Card */}
+      </div>
+
+      {/* Letter Completion Modal */}
+      {showLetterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+           <div className="bg-white rounded-3xl p-6 shadow-2xl w-full max-w-sm text-center">
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                 <Trophy size={32} fill="currentColor" />
+              </div>
+              <h2 className="text-2xl font-black text-slate-800 mb-2">
+                 '{completedLetter}' Complete!
+              </h2>
+              <p className="text-slate-500 font-medium mb-6">
+                 Excellent work. How would you like to proceed?
+              </p>
+              
+              <div className="flex flex-col gap-3">
+                 {difficulty === 'EASY' && (
+                    <>
+                       <button onClick={() => handleLetterCompletionAction('REINFORCE')} className="py-4 rounded-xl bg-indigo-600 text-white font-bold text-lg hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200">
+                          Reenforce with Medium
+                       </button>
+                       <button onClick={() => handleLetterCompletionAction('CONTINUE')} className="py-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:scale-95 transition-all">
+                          Continue with Next Letter (Easy)
+                       </button>
+                    </>
+                 )}
+
+                 {difficulty === 'MEDIUM' && (
+                    <>
+                       <button onClick={() => handleLetterCompletionAction('REINFORCE')} className="py-4 rounded-xl bg-rose-600 text-white font-bold text-lg hover:bg-rose-700 active:scale-95 transition-all shadow-lg shadow-rose-200">
+                          Reenforce with Hard
+                       </button>
+                       <button onClick={() => handleLetterCompletionAction('CONTINUE')} className="py-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:scale-95 transition-all">
+                          Continue with Next Letter (Easy)
+                       </button>
+                    </>
+                 )}
+                 
+                 {difficulty === 'HARD' && (
+                    <button onClick={() => handleLetterCompletionAction('CONTINUE')} className="py-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:scale-95 transition-all">
+                       Continue with Next Letter (Easy)
+                    </button>
+                 )}
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Main Card */}
       <div className="flex-1 flex flex-col items-center justify-center p-4 relative min-h-0">
         <div className={`w-full aspect-[4/3] max-w-xs bg-white rounded-[2rem] shadow-2xl flex items-center justify-center border-4 transition-all duration-300 max-h-full ${
            result === 'CORRECT' ? 'border-emerald-400 scale-105' :

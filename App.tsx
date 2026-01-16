@@ -566,8 +566,9 @@ const App: React.FC = () => {
         {(mode === AppMode.CHALLENGE || (mode === AppMode.BOGEY && bogeySource === AppMode.CHALLENGE)) && (
           <ChallengeView 
             // Key is crucial for resetting state when context changes
-            // We include difficulty and autoStartChallenge in key to force fresh mount on changes
-            key={`${difficulty}-${autoStartChallenge || 'menu'}`}
+            // We include autoStartChallenge in key to force fresh mount on changes, 
+            // but EXCLUDE difficulty so we can switch difficulty without unmounting (for "Reenforce" logic).
+            key={`${autoStartChallenge || 'menu'}`}
             difficulty={difficulty}
             setDifficulty={setDifficulty}
             onIncorrectReal={(w, snapshot) => handleBogey(w, AppMode.CHALLENGE, snapshot)}

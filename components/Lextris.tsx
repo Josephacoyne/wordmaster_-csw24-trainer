@@ -411,7 +411,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         setShowLevelUp(false);
       }, 2000);
     }
-  }, [levelScore, showLevelUp]);
+  }, [levelScore, showLevelUp, level]);
 
   // Handle Lexical Bomb explosion
   const handleLexicalBomb = useCallback((row: number, col: number) => {
@@ -524,7 +524,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
     let pointsScored = 0;
     const wordsFound: {word: string, points: number}[] = [];
     const minLength = isFlashClearActive ? 2 : MIN_WORD_LENGTH;
-    const wordsToCheck = isFlashClearActive ? new Set([...validWords, ...twoLetterValidWords]) : validWords;
+    const wordsToCheck = isFlashClearActive ? new Set([...Array.from(validWords), ...Array.from(twoLetterValidWords)]) : validWords;
 
     setGrid(prevGrid => {
       const newGrid = prevGrid.map(row => row.map(cell => ({ ...cell })));
@@ -964,7 +964,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
   const ghostCells = getGhostCells();
 
   // Block labels for the rack
-  const blockLabels = ['A', 'B', 'C'];
+  // const blockLabels = ['A', 'B', 'C']; // Unused
 
   return (
     <div className="h-[100svh] w-full flex flex-col overflow-hidden bg-stone-900">
@@ -1021,45 +1021,43 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
       </header>
 
       {/* ===== GAME AREA ===== */}
-      <main className="flex-grow flex flex-col lg:flex-row justify-center items-start gap-4 p-4 min-h-0 overflow-hidden">
-        {/* LEFT SIDE: Board + Controls */}
-        <div className="flex flex-col items-center gap-3">
-          {/* Board Container */}
-          <div className="relative w-[320px] h-[600px] overflow-hidden">
+      <main className="flex-grow flex flex-col items-center justify-start gap-3 p-2 pb-40 min-h-0 overflow-y-auto overflow-x-hidden relative">
+        {/* Board Container - Scaled to fit 60vh max */}
+        <div className="relative w-[calc(60vh*8/15)] h-[60vh] max-w-[320px] flex items-center justify-center shrink-0">
           {/* Notifications */}
           {lastClearedWords.length > 0 && (
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20">
-              <div className={`px-3 py-1.5 rounded-lg font-black text-sm shadow-lg animate-pulse ${
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 z-20 w-full flex justify-center">
+              <div className={`px-2 py-1 rounded-lg font-black text-[10px] shadow-lg animate-pulse ${
                 comboCount > 1 ? 'bg-purple-500 text-white' : isFlashClearActive ? 'bg-orange-500 text-white' : 'bg-amber-500 text-stone-900'
               }`}>
-                {comboCount > 1 && <span className="mr-2">🔥 CHAIN x{comboCount}!</span>}
+                {comboCount > 1 && <span className="mr-1">🔥 CHAIN x{comboCount}!</span>}
                 {lastClearedWords.map((w, i) => <span key={i}>{w} </span>)}
               </div>
             </div>
           )}
 
           {showLevelUp && (
-            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm rounded-lg">
               <div className="text-center animate-pulse">
-                <div className="text-5xl font-black text-amber-400 mb-2">LEVEL {level}!</div>
-                <div className="text-lg text-stone-300">Speed increased! Charges restored!</div>
+                <div className="text-3xl font-black text-amber-400 mb-1">LEVEL {level}!</div>
+                <div className="text-xs text-stone-300">Speed up! Charges restored!</div>
               </div>
             </div>
           )}
 
           {/* Glass Pause Overlay */}
           {isPaused && !isGameOver && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center backdrop-blur-sm bg-black/20">
-              <div className="text-4xl font-black text-white drop-shadow-lg animate-pulse">PAUSED</div>
+            <div className="absolute inset-0 z-20 flex items-center justify-center backdrop-blur-sm bg-black/20 rounded-lg">
+              <div className="text-3xl font-black text-white drop-shadow-lg animate-pulse">PAUSED</div>
             </div>
           )}
 
           {/* The Board */}
           <div
-            className="grid gap-px bg-stone-800 p-1 rounded-lg shadow-2xl border border-stone-700 max-h-full w-auto relative"
+            className="grid gap-[1px] bg-stone-800 p-1 rounded-lg shadow-2xl border border-stone-700 w-full h-full relative"
             style={{
               gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-              aspectRatio: `${COLS}/${ROWS}`,
+              gridTemplateRows: `repeat(${ROWS}, 1fr)`,
             }}
           >
           {grid.map((row, rowIndex) =>
@@ -1080,10 +1078,9 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
                   key={`${rowIndex}-${colIndex}`}
                   onClick={() => handleCellClick(rowIndex, colIndex)}
                   className={`
-                    aspect-square flex items-center justify-center
-                    text-xs sm:text-sm md:text-base font-black select-none
-                    transition-all duration-100
-                    w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8
+                    flex items-center justify-center
+                    text-[10px] sm:text-xs font-black select-none
+                    transition-all duration-100 h-full w-full
                     ${isLightSquare ? 'bg-stone-700' : 'bg-stone-600'}
                     ${isRowComplete && !isFalling ? 'ring-1 ring-emerald-500/50' : ''}
                     ${displayLetter ? 'cursor-pointer' : ''}
@@ -1099,7 +1096,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
                   {displayLetter && (
                     <span className={`
                       ${isWildcard ? 'text-amber-400' : isFalling ? 'text-white' : 'text-stone-100'}
-                      ${bombType !== 'normal' ? 'text-lg' : ''}
+                      ${bombType !== 'normal' ? 'text-sm' : ''}
                       drop-shadow-md
                     `}>
                       {displayLetter}
@@ -1110,173 +1107,150 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
             })
           )}
           </div>
-          </div>
+        </div>
 
-          {/* ===== CONVEYOR BELT RACK ===== */}
-          <div className="flex items-center gap-3">
-            {/* Conveyor Belt Pipeline */}
-            <div
-              className="flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border-2 border-amber-900/60"
-              style={{
-                background: 'linear-gradient(180deg, #d4a574 0%, #c4956a 50%, #b38560 100%)',
-                boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.3), inset 0 -2px 4px rgba(0,0,0,0.2), 0 4px 8px rgba(0,0,0,0.3)'
-              }}
-            >
-              {/* Active Block (Far Left) */}
-              <div className="flex flex-col items-center">
-                <span className="text-[9px] font-bold mb-1 text-amber-900 uppercase">Active</span>
-                <div className="flex gap-0.5 p-1.5 rounded bg-amber-100/50 ring-2 ring-amber-600">
-                  {blockQueue[0]?.letters.map((letter, i) => {
-                    const isSelected = selectedRackIndex?.blockIndex === 0 && selectedRackIndex?.letterIndex === i;
-                    return (
-                      <div
-                        key={i}
-                        onClick={() => handleRackLetterClick(0, i)}
-                        className={`w-7 h-7 flex items-center justify-center rounded font-black text-base shadow-md cursor-pointer transition-all
-                          ${blockQueue[0].isWildcard[i] ? 'bg-amber-200 text-amber-700' : 'bg-amber-50 text-stone-800'}
-                          ${isSelected ? 'ring-2 ring-yellow-400 scale-110 z-10' : ''}
-                        `}
-                        style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.5)' }}
-                      >
-                        {letter}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="w-px h-12 bg-amber-800/40" />
-
-              {/* Next Block (Middle) */}
-              <div className="flex flex-col items-center">
-                <span className="text-[9px] font-bold mb-1 text-amber-800/70 uppercase">Next</span>
-                <div className="flex gap-0.5 p-1 rounded bg-amber-200/30">
-                  {blockQueue[1]?.letters.map((letter, i) => {
-                    const isSelected = selectedRackIndex?.blockIndex === 1 && selectedRackIndex?.letterIndex === i;
-                    return (
-                      <div
-                        key={i}
-                        onClick={() => handleRackLetterClick(1, i)}
-                        className={`w-6 h-6 flex items-center justify-center rounded font-bold text-sm shadow-sm cursor-pointer transition-all
-                          ${blockQueue[1].isWildcard[i] ? 'bg-amber-200 text-amber-700' : 'bg-amber-50 text-stone-700'}
-                          ${isSelected ? 'ring-2 ring-yellow-400 scale-110 z-10' : ''}
-                        `}
-                        style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.15)' }}
-                      >
-                        {letter}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="w-px h-12 bg-amber-800/40" />
-
-              {/* On-Deck Block (Far Right) */}
-              <div className="flex flex-col items-center">
-                <span className="text-[9px] font-bold mb-1 text-amber-800/60 uppercase">On-Deck</span>
-                <div className="flex gap-0.5 p-1 rounded bg-amber-200/20">
-                  {blockQueue[2]?.letters.map((letter, i) => {
-                    const isSelected = selectedRackIndex?.blockIndex === 2 && selectedRackIndex?.letterIndex === i;
-                    return (
-                      <div
-                        key={i}
-                        onClick={() => handleRackLetterClick(2, i)}
-                        className={`w-5 h-5 flex items-center justify-center rounded font-bold text-xs shadow-sm cursor-pointer transition-all
-                          ${blockQueue[2].isWildcard[i] ? 'bg-amber-200 text-amber-700' : 'bg-amber-50 text-stone-600'}
-                          ${isSelected ? 'ring-2 ring-yellow-400 scale-110 z-10' : ''}
-                        `}
-                        style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}
-                      >
-                        {letter}
-                      </div>
-                    );
-                  })}
-                </div>
+        {/* ===== CONVEYOR BELT RACK ===== */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Conveyor Belt Pipeline */}
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-lg shadow-lg border-2 border-amber-900/60"
+            style={{
+              background: 'linear-gradient(180deg, #d4a574 0%, #c4956a 50%, #b38560 100%)',
+              boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.3), inset 0 -2px 4px rgba(0,0,0,0.2), 0 4px 8px rgba(0,0,0,0.3)'
+            }}
+          >
+            {/* Active Block (Far Left) */}
+            <div className="flex flex-col items-center">
+              <span className="text-[7px] font-bold mb-0.5 text-amber-900 uppercase">Active</span>
+              <div className="flex gap-0.5 p-1 rounded bg-amber-100/50 ring-1 ring-amber-600">
+                {blockQueue[0]?.letters.map((letter, i) => {
+                  const isSelected = selectedRackIndex?.blockIndex === 0 && selectedRackIndex?.letterIndex === i;
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => handleRackLetterClick(0, i)}
+                      className={`w-6 h-6 flex items-center justify-center rounded font-black text-xs shadow-md cursor-pointer transition-all touch-manipulation
+                        ${blockQueue[0].isWildcard[i] ? 'bg-amber-200 text-amber-700' : 'bg-amber-50 text-stone-800'}
+                        ${isSelected ? 'ring-2 ring-yellow-400 scale-110 z-10' : ''}
+                      `}
+                      style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.5)' }}
+                    >
+                      {letter}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Shuffle Button */}
-            <button
-              onClick={shuffleRack}
-              disabled={isGameOver}
-              className="p-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 active:bg-amber-400 text-white shadow-lg transition-all disabled:opacity-50"
-              title="Shuffle letters [S]"
-            >
-              <RefreshCw size={20} />
-            </button>
+            <div className="w-px h-8 bg-amber-800/40" />
+
+            {/* Next Block (Middle) */}
+            <div className="flex flex-col items-center">
+              <span className="text-[7px] font-bold mb-0.5 text-amber-800/70 uppercase">Next</span>
+              <div className="flex gap-0.5 p-0.5 rounded bg-amber-200/30">
+                {blockQueue[1]?.letters.map((letter, i) => {
+                  const isSelected = selectedRackIndex?.blockIndex === 1 && selectedRackIndex?.letterIndex === i;
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => handleRackLetterClick(1, i)}
+                      className={`w-5 h-5 flex items-center justify-center rounded font-bold text-[10px] shadow-sm cursor-pointer transition-all touch-manipulation
+                        ${blockQueue[1].isWildcard[i] ? 'bg-amber-200 text-amber-700' : 'bg-amber-50 text-stone-700'}
+                        ${isSelected ? 'ring-1 ring-yellow-400 scale-110 z-10' : ''}
+                      `}
+                      style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.15)' }}
+                    >
+                      {letter}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="w-px h-8 bg-amber-800/40" />
+
+            {/* On-Deck Block (Far Right) */}
+            <div className="flex flex-col items-center">
+              <span className="text-[7px] font-bold mb-0.5 text-amber-800/60 uppercase">On-Deck</span>
+              <div className="flex gap-0.5 p-0.5 rounded bg-amber-200/20">
+                {blockQueue[2]?.letters.map((letter, i) => {
+                  const isSelected = selectedRackIndex?.blockIndex === 2 && selectedRackIndex?.letterIndex === i;
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => handleRackLetterClick(2, i)}
+                      className={`w-4 h-4 flex items-center justify-center rounded font-bold text-[8px] shadow-sm cursor-pointer transition-all touch-manipulation
+                        ${blockQueue[2].isWildcard[i] ? 'bg-amber-200 text-amber-700' : 'bg-amber-50 text-stone-600'}
+                        ${isSelected ? 'ring-1 ring-yellow-400 scale-110 z-10' : ''}
+                      `}
+                      style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}
+                    >
+                      {letter}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
+
+          {/* Shuffle Button */}
+          <button
+            onClick={shuffleRack}
+            disabled={isGameOver}
+            className="p-2 rounded-lg bg-amber-600 hover:bg-amber-500 active:bg-amber-400 text-white shadow-lg transition-all disabled:opacity-50 touch-manipulation"
+            title="Shuffle letters [S]"
+          >
+            <RefreshCw size={18} />
+          </button>
         </div>
 
-        {/* RIGHT SIDE: Word Ledger (Minimal History) */}
-        <div className="w-full lg:w-48 min-w-[150px] flex flex-col bg-stone-800/50 rounded-lg border border-stone-700 p-3 overflow-hidden max-h-[500px]">
-          <h3 className="text-sm font-bold text-amber-400 mb-2 text-center uppercase tracking-wider">Words</h3>
-          <div className="flex-1 overflow-y-auto space-y-1">
-            {wordLedger.length === 0 ? (
-              <p className="text-stone-500 text-xs text-center italic mt-2">No words yet</p>
-            ) : (
-              wordLedger.map((entry, index) => (
-                <div
-                  key={entry.id}
-                  className={`flex items-center justify-between px-2 py-1 rounded text-xs transition-all ${
-                    index === 0 ? 'bg-amber-900/40 animate-pulse' : 'bg-stone-700/30'
-                  }`}
-                >
-                  <span className="font-bold text-stone-200">{entry.word}</span>
-                  <span className="font-black text-amber-400 text-[10px]">+{entry.points}</span>
-                </div>
-              ))
-            )}
+        {/* Word Ledger (Hidden on small mobile if no room, or absolute) */}
+        <div className="absolute right-1 top-2 w-20 flex flex-col bg-stone-800/80 backdrop-blur-sm rounded-lg border border-stone-700 p-1 overflow-hidden max-h-[120px] pointer-events-none">
+          <div className="flex-1 overflow-y-auto space-y-0.5">
+            {wordLedger.map((entry, index) => (
+              <div
+                key={entry.id}
+                className={`flex items-center justify-between px-1 py-0.5 rounded text-[8px] transition-all ${
+                  index === 0 ? 'bg-amber-900/60' : 'bg-stone-700/30'
+                }`}
+              >
+                <span className="font-bold text-stone-200 truncate">{entry.word}</span>
+                <span className="font-black text-amber-400">+{entry.points}</span>
+              </div>
+            ))}
           </div>
         </div>
       </main>
 
       {/* ===== CONTROL DECK ===== */}
-      <footer className="h-60 shrink-0 bg-stone-800 border-t-2 border-stone-700 px-3 pt-2 pb-4 flex flex-col">
+      <footer className="shrink-0 bg-stone-950 border-t-2 border-stone-800 px-2 pt-2 pb-6 flex flex-col fixed bottom-0 left-0 right-0 z-40">
         {/* Status Bar */}
-        <div className="flex items-center justify-center gap-4 mb-2 h-6">
-          <div className="flex items-center gap-3 text-stone-500 text-xs uppercase tracking-wider">
-            <span className="text-emerald-400 font-bold">FLOW: 3+ Letters</span>
+        <div className="flex items-center justify-center gap-2 mb-2 h-4">
+          <div className="flex items-center gap-2 text-stone-500 text-[10px] font-bold uppercase tracking-wider">
+            <span className="text-emerald-400">FLOW: 3+ Letters</span>
             {fallingBlock && fallingBlock.letters.length >= 2 && fallingBlock.blockType === 'normal' && (
-              <span className="text-indigo-400 font-bold">{getOrientationIndicator()}</span>
+              <span className="text-indigo-400">{getOrientationIndicator()}</span>
             )}
             {fallingBlock?.blockType === 'lexical-bomb' && (
-              <span className="text-blue-400 flex items-center gap-1"><Sparkles size={12} /> Lexical</span>
+              <span className="text-blue-400 flex items-center gap-1"><Sparkles size={10} /> Lexical</span>
             )}
             {fallingBlock?.blockType === 'destroyer-bomb' && (
-              <span className="text-red-400 flex items-center gap-1"><Bomb size={12} /> Destroyer</span>
+              <span className="text-red-400 flex items-center gap-1"><Bomb size={10} /> Destroyer</span>
             )}
-            {(selectedCell || selectedRackIndex) && <span className="text-yellow-400 font-bold animate-pulse">SWAP MODE</span>}
+            {(selectedCell || selectedRackIndex) && <span className="text-yellow-400 animate-pulse">SWAP MODE</span>}
           </div>
         </div>
 
-        {/* Flash Clear Progress Bar */}
-        {isFlashClearActive && (
-          <div className="mb-2 mx-auto max-w-md w-full">
-            <div className="flex items-center gap-2 text-orange-400 text-xs font-bold mb-1">
-              <Flame size={14} />
-              <span>FLASH CLEAR - 2+ Letters!</span>
-              <span className="ml-auto">{flashClearTimeLeft}s</span>
-            </div>
-            <div className="h-2 bg-stone-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-orange-500 to-yellow-400 transition-all duration-1000"
-                style={{ width: `${(flashClearTimeLeft / FLASH_CLEAR_DURATION) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Control Buttons */}
-        <div className="flex-grow flex flex-col gap-2 max-w-md mx-auto w-full">
-          {/* Row 1: Movement + Flip */}
-          <div className="flex gap-2 h-16">
+        {/* Control Buttons - EXACTLY 2 ROWS */}
+        <div className="flex flex-col gap-2 max-w-md mx-auto w-full">
+          {/* Row 1: LEFT, TOGGLE, RIGHT */}
+          <div className="flex gap-2 h-12">
             <button
               onClick={() => moveBlock('left')}
               disabled={!fallingBlock || isGameOver || isPaused || isProcessing}
-              className="flex-1 bg-stone-700 hover:bg-stone-600 active:bg-stone-500 rounded-xl text-stone-300 font-black disabled:opacity-30 transition-all border border-stone-600 flex items-center justify-center touch-manipulation"
+              className="flex-1 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border border-stone-700 flex items-center justify-center touch-manipulation"
             >
-              <ChevronLeft size={28} />
+              <ChevronLeft size={24} />
             </button>
 
             <button
@@ -1285,65 +1259,57 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
               className={`flex-1 rounded-xl font-bold transition-all border flex items-center justify-center touch-manipulation ${
                 fallingBlock && fallingBlock.letters.length >= 2 && fallingBlock.blockType === 'normal'
                   ? 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-400 text-white border-indigo-500'
-                  : 'bg-stone-700 text-stone-500 border-stone-600 opacity-40'
+                  : 'bg-stone-800 text-stone-600 border-stone-700'
               }`}
             >
-              <FlipVertical size={24} />
+              <FlipVertical size={20} />
             </button>
 
             <button
               onClick={() => moveBlock('right')}
               disabled={!fallingBlock || isGameOver || isPaused || isProcessing}
-              className="flex-1 bg-stone-700 hover:bg-stone-600 active:bg-stone-500 rounded-xl text-stone-300 font-black disabled:opacity-30 transition-all border border-stone-600 flex items-center justify-center touch-manipulation"
+              className="flex-1 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border border-stone-700 flex items-center justify-center touch-manipulation"
             >
-              <ChevronRight size={28} />
+              <ChevronRight size={24} />
             </button>
           </div>
 
-          {/* Row 2: Fast Drop */}
-          <div className="flex justify-center h-16">
-            <button
-              onClick={() => moveBlock('down')}
-              disabled={!fallingBlock || isGameOver || isPaused || isProcessing}
-              className="w-1/2 bg-stone-700 hover:bg-stone-600 active:bg-stone-500 rounded-xl text-stone-300 font-black disabled:opacity-30 transition-all border border-stone-600 flex items-center justify-center touch-manipulation"
-            >
-              <ChevronDown size={28} />
-            </button>
-          </div>
-
-          {/* Row 3: V-Scan + Flash Clear (Added to maintain functionality) */}
-          <div className="flex gap-2 h-16">
+          {/* Row 2: V SCAN, DOWN, FLASH CLEAR */}
+          <div className="flex gap-2 h-12">
             <button
               onClick={activateVerticalScan}
               disabled={verticalScanCharges <= 0 || isGameOver || isPaused || isProcessing}
-              className={`flex-1 rounded-xl font-black text-xs transition-all border flex items-center justify-center gap-2 touch-manipulation ${
+              className={`flex-1 rounded-xl font-black text-[10px] transition-all border flex items-center justify-center gap-1 touch-manipulation ${
                 verticalScanCharges > 0
-                  ? 'bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-400 text-white border-cyan-500'
-                  : 'bg-stone-700 text-stone-500 border-stone-600 opacity-40'
+                  ? 'bg-cyan-900/40 hover:bg-cyan-900/60 active:bg-cyan-900/80 text-cyan-400 border-cyan-900/50'
+                  : 'bg-stone-800 text-stone-600 border-stone-700 opacity-40'
               }`}
             >
-              <Zap size={20} />
-              <span>V-SCAN ({verticalScanCharges})</span>
+              <Zap size={16} />
+              <span>V-SCAN</span>
+            </button>
+
+            <button
+              onClick={() => moveBlock('down')}
+              disabled={!fallingBlock || isGameOver || isPaused || isProcessing}
+              className="flex-1 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border border-stone-700 flex items-center justify-center touch-manipulation"
+            >
+              <ChevronDown size={24} />
             </button>
 
             <button
               onClick={activateFlashClear}
               disabled={isFlashClearActive || isGameOver || isPaused}
-              className={`flex-1 rounded-xl font-black text-xs transition-all border flex items-center justify-center gap-2 touch-manipulation ${
+              className={`flex-1 rounded-xl font-black text-[10px] transition-all border flex items-center justify-center gap-1 touch-manipulation ${
                 isFlashClearActive
-                  ? 'bg-orange-500/20 text-orange-400 border-orange-500/50'
-                  : 'bg-orange-600 hover:bg-orange-500 active:bg-orange-400 text-white border-orange-500'
+                  ? 'bg-orange-900/40 text-orange-400 border-orange-900/50'
+                  : 'bg-orange-900/20 hover:bg-orange-900/40 active:bg-orange-900/60 text-orange-400 border-orange-900/30'
               } disabled:opacity-50`}
             >
-              <Flame size={20} />
-              <span>FLASH CLEAR</span>
+              <Flame size={16} />
+              <span>FLASH</span>
             </button>
           </div>
-        </div>
-
-        {/* Info text */}
-        <div className="text-center text-stone-600 text-[10px] uppercase tracking-wider mt-1">
-          [S] Shuffle rack • [F] Flash • [V] Scan • Tap letters to swap
         </div>
       </footer>
 

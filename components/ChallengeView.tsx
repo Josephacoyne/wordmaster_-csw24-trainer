@@ -91,7 +91,13 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
     
     // Create items
     const realItems: ChallengeItem[] = reals.map(r => ({ word: r.w, isReal: true, data: r }));
-    const fakeItems: ChallengeItem[] = fakeWords.map(f => ({ word: f, isReal: false }));
+
+    // Repeat fake words to increase their frequency in the deck
+    const fakeMultiplier = 3;
+    const fakeItems: ChallengeItem[] = [];
+    for (let i = 0; i < fakeMultiplier; i++) {
+      fakeWords.forEach(f => fakeItems.push({ word: f, isReal: false }));
+    }
     
     let combined: ChallengeItem[] = [];
 

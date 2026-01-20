@@ -9,7 +9,7 @@ interface LextrisProps {
 
 // Grid dimensions
 const COLS = 8;
-const ROWS = 15;
+const ROWS = 11;
 
 // Minimum word length to clear (FLOW MODE: 3+ letters)
 const MIN_WORD_LENGTH = 3;
@@ -477,12 +477,8 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
       const newGrid = prevGrid.map(row => row.map(cell => ({ ...cell })));
       cells.forEach((cell, i) => {
         if (cell.row >= 0 && cell.row < ROWS && cell.col >= 0 && cell.col < COLS) {
-          let letter = orderedLetters[i];
-          if (orderedWildcards[i]) {
-            letter = findBestWildcardLetter(cell.row, cell.col, newGrid);
-          }
           newGrid[cell.row][cell.col] = {
-            letter,
+            letter: orderedLetters[i],
             isWildcard: orderedWildcards[i],
             id: block.id + i * 0.1
           };
@@ -804,7 +800,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
 
   // Rack letter selection
   const handleRackLetterClick = (blockIndex: number, letterIndex: number) => {
-    if (isGameOver || isPaused) return;
+    if (isGameOver) return;
     
     // Clear board selection if any
     setSelectedCell(null);
@@ -813,19 +809,23 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
       setSelectedRackIndex(null);
     } else {
       setSelectedRackIndex({ blockIndex, letterIndex });
+      setIsPaused(true); // Pause when selecting from rack
     }
   };
 
   // Real-time swap
   const handleCellClick = (row: number, col: number) => {
-    if (isGameOver || isPaused || grid[row][col].letter === null) return;
+    if (isGameOver || grid[row][col].letter === null) return;
 
-    // Handle Rack-to-Board swap
+    // Handle Rack-to-Board swap (Bottom Row Only)
     if (selectedRackIndex !== null) {
+      if (row !== ROWS - 1) return; // RESTRICT TO BOTTOM ROW
+
       setGrid(prevGrid => {
         const newGrid = prevGrid.map(r => r.map(c => ({ ...c })));
-        const boardLetter = newGrid[row][col].letter;
-        const boardIsWildcard = newGrid[row][col].isWildcard;
+        const boardCell = newGrid[row][col];
+        const boardLetter = boardCell.letter;
+        const boardIsWildcard = boardCell.isWildcard;
         
         setBlockQueue(prevQueue => {
           const newQueue = [...prevQueue];
@@ -849,9 +849,12 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
 
         // Swap: rack to board
         const rackBlock = blockQueue[selectedRackIndex.blockIndex];
+        const rackLetter = rackBlock.letters[selectedRackIndex.letterIndex];
+        const rackIsWildcard = rackBlock.isWildcard[selectedRackIndex.letterIndex];
+
         newGrid[row][col] = {
-          letter: rackBlock.letters[selectedRackIndex.letterIndex],
-          isWildcard: rackBlock.isWildcard[selectedRackIndex.letterIndex],
+          letter: rackLetter,
+          isWildcard: rackIsWildcard,
           id: getNextId()
         };
         
@@ -863,11 +866,14 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
       setTimeout(() => setSwappedCell(null), 300);
       
       setSelectedRackIndex(null);
+      setIsPaused(false); // Unpause after swap
       setIsProcessing(true);
       return;
     }
 
-    // Handle Board-to-Board swap (existing logic)
+    // Handle Board-to-Board swap (Only if not paused by other means)
+    if (isPaused) return;
+
     if (selectedCell === null) {
       setSelectedCell({ row, col });
     } else {
@@ -1020,10 +1026,9 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         </div>
       </header>
 
-      {/* ===== GAME AREA ===== */}
       <main className="flex-grow flex flex-col items-center justify-start gap-3 p-2 pb-40 min-h-0 overflow-y-auto overflow-x-hidden relative">
         {/* Board Container - Scaled to fit 60vh max */}
-        <div className="relative w-[calc(60vh*8/15)] h-[60vh] max-w-[320px] flex items-center justify-center shrink-0">
+        <div className="relative w-[calc(60vh*8/11)] h-[60vh] max-w-[320px] flex items-center justify-center shrink-0">
           {/* Notifications */}
           {lastClearedWords.length > 0 && (
             <div className="absolute top-0 left-1/2 -translate-x-1/2 z-20 w-full flex justify-center">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { WordEntry } from '../types';
-import { ArrowLeft, Shuffle, Pause, Play, RotateCcw, FlipVertical, ChevronDown, ChevronLeft, ChevronRight, Bomb, Sparkles } from 'lucide-react';
+import { ArrowLeft, Pause, Play, RotateCcw, FlipVertical, ChevronDown, ChevronLeft, ChevronRight, Bomb, Sparkles, Zap, Flame, RefreshCw } from 'lucide-react';
 
 interface LextrisProps {
   fullDictionary: WordEntry[];
@@ -11,7 +11,10 @@ interface LextrisProps {
 const COLS = 8;
 const ROWS = 15;
 
-// 4-way orientation for 2-letter blocks
+// Minimum word length to clear (FLOW MODE: 3+ letters)
+const MIN_WORD_LENGTH = 3;
+
+// 4-way orientation for multi-letter blocks
 type Orientation = 'horizontal' | 'vertical' | 'horizontal-reversed' | 'vertical-reversed';
 
 // Block type
@@ -24,7 +27,7 @@ interface Cell {
   id: number;
 }
 
-// Falling block - can be 1 or 2 letters, or a bomb
+// Falling block - can be 1, 2, or 3 letters, or a bomb
 interface FallingBlock {
   letters: string[];
   col: number;
@@ -35,10 +38,19 @@ interface FallingBlock {
   blockType: BlockType;
 }
 
+// Rack state: 6 letters total distributed across 3 fixed block bins
+// [0] = Block A (1 letter)
+// [1,2] = Block B (2 letters)
+// [3,4,5] = Block C (3 letters)
+interface RackState {
+  letters: string[];      // always 6 letters
+  isWildcard: boolean[];  // always 6 booleans
+}
+
 // Letter frequency for Scrabble-like distribution
 const LETTER_BAG = 'EEEEEEEEEEEEAAAAAAAAAIIIIIIIIIOOOOOOOONNNNNNRRRRRRTTTTTTLLLLSSSSUUUUDDDDGGGBBCCMMPPFFHHVVWWYYKJXQZ';
 const VOWELS = 'AEIOU';
-const COMMON_VOWELS = ['E', 'A', 'I']; // Most common vowels for Lexical Bomb
+const COMMON_VOWELS = ['E', 'A', 'I'];
 
 const getRandomLetter = (): string => {
   return LETTER_BAG[Math.floor(Math.random() * LETTER_BAG.length)];
@@ -58,23 +70,33 @@ const createEmptyGrid = (): Cell[][] => {
   );
 };
 
+// Max charges for Vertical Scan
+const MAX_VERTICAL_SCAN_CHARGES = 3;
+
+// Flash Clear duration
+const FLASH_CLEAR_DURATION = 10;
+
 const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
-  // Build valid words set for quick lookup
+  // Build valid words set for quick lookup (3+ letters for clearing)
   const validWords = useMemo(() => {
     const words = new Set<string>();
     fullDictionary.forEach(entry => {
-      if (entry.w.length >= 2 && entry.w.length <= COLS) {
+      if (entry.w.length >= MIN_WORD_LENGTH && entry.w.length <= COLS) {
         words.add(entry.w.toUpperCase());
       }
     });
     return words;
   }, [fullDictionary]);
 
-  // Get 2-letter words for block generation
-  const twoLetterWords = useMemo(() => {
-    return fullDictionary
-      .filter(entry => entry.w.length === 2)
-      .map(entry => entry.w.toUpperCase());
+  // Build 2-letter words set for Flash Clear
+  const twoLetterValidWords = useMemo(() => {
+    const words = new Set<string>();
+    fullDictionary.forEach(entry => {
+      if (entry.w.length === 2) {
+        words.add(entry.w.toUpperCase());
+      }
+    });
+    return words;
   }, [fullDictionary]);
 
   // Game state
@@ -90,19 +112,34 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [comboCount, setComboCount] = useState(0);
 
-  // Scramble mode state
-  const [isScrambleMode, setIsScrambleMode] = useState(false);
-  const [scrambleTimeLeft, setScrambleTimeLeft] = useState(0);
+  // Word Ledger: track cleared words with scores
+  const [wordLedger, setWordLedger] = useState<{word: string, points: number, id: number}[]>([]);
+
+  // Vertical Scan power-up charges
+  const [verticalScanCharges, setVerticalScanCharges] = useState(MAX_VERTICAL_SCAN_CHARGES);
+
+  // CONVEYOR BELT RACK: 3 blocks in sequence (Active, Next, On-Deck)
+  const [blockQueue, setBlockQueue] = useState<{letters: string[], isWildcard: boolean[]}[]>([]);
+  // Current block type sequence: 0=1-letter, 1=2-letter, 2=3-letter
+  const [blockTypeSequence, setBlockTypeSequence] = useState(0);
+
+  // Swap state: selected from rack or selected on board
+  const [selectedRackIndex, setSelectedRackIndex] = useState<{blockIndex: number, letterIndex: number} | null>(null);
   const [selectedCell, setSelectedCell] = useState<{row: number, col: number} | null>(null);
+  const [swappedCell, setSwappedCell] = useState<{row: number, col: number} | null>(null);
+
+  // Flash Clear power-up state
+  const [isFlashClearActive, setIsFlashClearActive] = useState(false);
+  const [flashClearTimeLeft, setFlashClearTimeLeft] = useState(0);
 
   // Processing state for cascade/combo
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Drop speed (decreases with level)
-  const baseDropSpeed = 600;
+  // Drop speed (decreases with milestones) - ZEN START: 1500ms, speeds up gradually
   const dropSpeed = useMemo(() => {
-    return Math.max(150, baseDropSpeed * Math.pow(0.85, level - 1));
-  }, [level]);
+    const speedTier = Math.floor(totalScore / 500);
+    return Math.max(200, 1500 * Math.pow(0.95, speedTier));
+  }, [totalScore]);
 
   // Unique ID counter
   const idCounter = useRef(0);
@@ -120,124 +157,189 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
     return false;
   }, [grid]);
 
-  // Spawn a new falling block
-  const spawnBlock = useCallback(() => {
-    const newBlocksPlaced = blocksPlaced + 1;
-    const isEvery15th = newBlocksPlaced % 15 === 0;
-    const isEvery20th = newBlocksPlaced % 20 === 0;
+  // Draw a single letter from the bag
+  const drawLetter = useCallback((forceVowelChance: boolean = false): { letter: string, isWildcard: boolean } => {
+    // Small chance for wildcard
+    if (Math.random() < 0.05) {
+      return { letter: '?', isWildcard: true };
+    }
+    // Boost vowels if board is filling up
+    if (forceVowelChance && Math.random() < 0.4) {
+      return { letter: getRandomVowel(), isWildcard: false };
+    }
+    return { letter: getRandomLetter(), isWildcard: false };
+  }, []);
+
+  // Generate a single block based on type (0=1L, 1=2L, 2=3L)
+  const generateBlock = useCallback((blockType: number): {letters: string[], isWildcard: boolean[]} => {
     const topRowsHaveBlocks = hasBlocksInTopRows();
+    const size = blockType === 0 ? 1 : blockType === 1 ? 2 : 3;
+    const letters: string[] = [];
+    const isWildcard: boolean[] = [];
 
-    let blockType: BlockType = 'normal';
-    let letters: string[];
-    let isWildcard: boolean[];
+    for (let i = 0; i < size; i++) {
+      const drawn = drawLetter(topRowsHaveBlocks);
+      letters.push(drawn.letter);
+      isWildcard.push(drawn.isWildcard);
+    }
 
-    // Every 20th block is a bomb
-    if (isEvery20th && newBlocksPlaced > 0) {
-      blockType = Math.random() < 0.5 ? 'lexical-bomb' : 'destroyer-bomb';
-      letters = [blockType === 'lexical-bomb' ? '💎' : '💥'];
-      isWildcard = [false];
+    return { letters, isWildcard };
+  }, [drawLetter, hasBlocksInTopRows]);
+
+  // Initialize block queue with 3 blocks in sequence (1L, 2L, 3L)
+  const initializeBlockQueue = useCallback(() => {
+    const queue = [
+      generateBlock(0), // 1-letter
+      generateBlock(1), // 2-letter
+      generateBlock(2)  // 3-letter
+    ];
+    setBlockQueue(queue);
+    setBlockTypeSequence(0);
+  }, [generateBlock]);
+
+  // VISUAL SHUFFLE: Randomize letters across all 3 blocks WITHOUT drawing new ones
+  const shuffleRack = useCallback(() => {
+    setBlockQueue(prev => {
+      // Flatten all letters
+      const allPairs: {letter: string, isWildcard: boolean}[] = [];
+      prev.forEach(block => {
+        block.letters.forEach((letter, i) => {
+          allPairs.push({ letter, isWildcard: block.isWildcard[i] });
+        });
+      });
+
+      // Fisher-Yates shuffle
+      for (let i = allPairs.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allPairs[i], allPairs[j]] = [allPairs[j], allPairs[i]];
+      }
+
+      // Rebuild blocks (1L, 2L, 3L)
+      const newQueue = [
+        { letters: [allPairs[0].letter], isWildcard: [allPairs[0].isWildcard] },
+        { letters: [allPairs[1].letter, allPairs[2].letter], isWildcard: [allPairs[1].isWildcard, allPairs[2].isWildcard] },
+        { letters: [allPairs[3].letter, allPairs[4].letter, allPairs[5].letter], isWildcard: [allPairs[3].isWildcard, allPairs[4].isWildcard, allPairs[5].isWildcard] }
+      ];
+
+      return newQueue;
+    });
+  }, []);
+
+  // Spawn the next block from queue
+  const spawnBlock = useCallback(() => {
+    if (blockQueue.length === 0) return;
+
+    // Get the active block (first in queue)
+    const activeBlock = blockQueue[0];
+    const newBlocksPlaced = blocksPlaced + 1;
+
+    // Determine starting column based on block size
+    let col: number;
+    if (activeBlock.letters.length === 3) {
+      // PROPELLER: reference position is CENTER
+      const minCol = 1;
+      const maxCol = COLS - 2;
+      col = minCol + Math.floor(Math.random() * (maxCol - minCol + 1));
     } else {
-      // Determine block type: 60% single letter, 40% two-letter word
-      const isTwoLetterBlock = Math.random() < 0.4 && twoLetterWords.length > 0;
+      const blockWidth = activeBlock.letters.length;
+      const maxCol = COLS - blockWidth;
+      col = Math.floor(Math.random() * (maxCol + 1));
+    }
 
-      if (isTwoLetterBlock) {
-        // Pick a random 2-letter word
-        const word = twoLetterWords[Math.floor(Math.random() * twoLetterWords.length)];
-        letters = word.split('');
-        isWildcard = [false, false];
-      } else {
-        // Single letter block
-        let letter: string;
+    // Check if spawn position is blocked
+    const spawnCells = activeBlock.letters.length === 3
+      ? [col - 1, col, col + 1]
+      : activeBlock.letters.length === 2
+        ? [col, col + 1]
+        : [col];
 
-        if (isEvery15th) {
-          letter = '?';
-          isWildcard = [true];
-        } else if (topRowsHaveBlocks && Math.random() < 0.3) {
-          // 30% boost for vowel or blank when top rows have blocks
-          if (Math.random() < 0.3) {
-            letter = '?';
-            isWildcard = [true];
-          } else {
-            letter = getRandomVowel();
-            isWildcard = [false];
-          }
-        } else {
-          letter = getRandomLetter();
-          isWildcard = [false];
-        }
-
-        letters = [letter];
-        if (!isWildcard) isWildcard = [false];
+    for (const c of spawnCells) {
+      if (grid[0][c]?.letter !== null) {
+        setIsGameOver(true);
+        return;
       }
     }
 
-    // Determine starting column
-    const isTwoLetter = letters.length === 2;
-    const maxCol = isTwoLetter ? COLS - 2 : COLS - 1;
-    const col = Math.floor(Math.random() * (maxCol + 1));
-
-    // Check if spawn position is blocked
-    if (grid[0][col].letter !== null) {
-      setIsGameOver(true);
-      return;
-    }
-    if (isTwoLetter && grid[0][col + 1]?.letter !== null) {
-      setIsGameOver(true);
-      return;
-    }
-
     setFallingBlock({
-      letters,
+      letters: activeBlock.letters,
       col,
       row: 0,
       orientation: 'horizontal',
-      isWildcard,
+      isWildcard: activeBlock.isWildcard,
       id: getNextId(),
-      blockType
+      blockType: 'normal'
     });
+
+    // Slide queue left and add new block to the end
+    const nextBlockType = (blockTypeSequence + 3) % 3; // Next in sequence (1L→2L→3L)
+    const newBlock = generateBlock(nextBlockType);
+    setBlockQueue(prev => [...prev.slice(1), newBlock]);
+    setBlockTypeSequence(prev => (prev + 1) % 3);
     setBlocksPlaced(newBlocksPlaced);
-  }, [blocksPlaced, grid, twoLetterWords, hasBlocksInTopRows]);
+  }, [blockQueue, blocksPlaced, grid, blockTypeSequence, generateBlock]);
+
+  // Get block cells based on orientation (PROPELLER rotation for 3-letter blocks)
+  const getBlockCells = useCallback((block: FallingBlock): {row: number, col: number}[] => {
+    const cells: {row: number, col: number}[] = [];
+    const isHorizontal = block.orientation === 'horizontal' || block.orientation === 'horizontal-reversed';
+
+    if (block.letters.length === 1) {
+      cells.push({ row: block.row, col: block.col });
+    } else if (block.letters.length === 2) {
+      if (isHorizontal) {
+        cells.push({ row: block.row, col: block.col });
+        cells.push({ row: block.row, col: block.col + 1 });
+      } else {
+        cells.push({ row: block.row, col: block.col });
+        cells.push({ row: block.row + 1, col: block.col });
+      }
+    } else if (block.letters.length === 3) {
+      // PROPELLER: Middle letter (index 1) stays at block.row, block.col
+      if (isHorizontal) {
+        cells.push({ row: block.row, col: block.col - 1 });
+        cells.push({ row: block.row, col: block.col });
+        cells.push({ row: block.row, col: block.col + 1 });
+      } else {
+        cells.push({ row: block.row - 1, col: block.col });
+        cells.push({ row: block.row, col: block.col });
+        cells.push({ row: block.row + 1, col: block.col });
+      }
+    }
+
+    return cells;
+  }, []);
 
   // Check if block can be placed at position
   const canPlaceBlock = useCallback((block: FallingBlock, row: number, col: number, orientation: Orientation): boolean => {
-    if (block.letters.length === 1) {
-      if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return false;
-      return grid[row][col].letter === null;
+    const testBlock = { ...block, row, col, orientation };
+    const cells = getBlockCells(testBlock);
+
+    for (const cell of cells) {
+      if (cell.row < 0 || cell.row >= ROWS || cell.col < 0 || cell.col >= COLS) {
+        return false;
+      }
+      if (grid[cell.row][cell.col].letter !== null) {
+        return false;
+      }
     }
 
-    // 2-letter block - check based on orientation
-    const isHorizontal = orientation === 'horizontal' || orientation === 'horizontal-reversed';
-
-    if (isHorizontal) {
-      if (col < 0 || col + 1 >= COLS || row < 0 || row >= ROWS) return false;
-      return grid[row][col].letter === null && grid[row][col + 1].letter === null;
-    } else {
-      // vertical
-      if (col < 0 || col >= COLS || row < 0 || row + 1 >= ROWS) return false;
-      return grid[row][col].letter === null && grid[row + 1][col].letter === null;
-    }
-  }, [grid]);
+    return true;
+  }, [grid, getBlockCells]);
 
   // Check if block can move down
   const canMoveDown = useCallback((block: FallingBlock): boolean => {
     const nextRow = block.row + 1;
-    const isHorizontal = block.orientation === 'horizontal' || block.orientation === 'horizontal-reversed';
+    return canPlaceBlock(block, nextRow, block.col, block.orientation);
+  }, [canPlaceBlock]);
 
-    if (block.letters.length === 1) {
-      if (nextRow >= ROWS) return false;
-      return grid[nextRow][block.col].letter === null;
+  // Calculate ghost position (where block will land)
+  const getGhostPosition = useCallback((block: FallingBlock): number => {
+    let ghostRow = block.row;
+    while (canPlaceBlock(block, ghostRow + 1, block.col, block.orientation)) {
+      ghostRow++;
     }
-
-    if (isHorizontal) {
-      if (nextRow >= ROWS) return false;
-      return grid[nextRow][block.col].letter === null &&
-             grid[nextRow][block.col + 1].letter === null;
-    } else {
-      // vertical - check below the bottom letter
-      if (block.row + 2 >= ROWS) return false;
-      return grid[block.row + 2][block.col].letter === null;
-    }
-  }, [grid]);
+    return ghostRow;
+  }, [canPlaceBlock]);
 
   // Find best letter for wildcard
   const findBestWildcardLetter = useCallback((row: number, col: number, currentGrid: Cell[][]): string => {
@@ -258,7 +360,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         horizontalWord += c === col ? testLetter : currentGrid[row][c].letter;
       }
 
-      if (horizontalWord.length >= 2 && validWords.has(horizontalWord) && horizontalWord.length > longestWord) {
+      if (horizontalWord.length >= MIN_WORD_LENGTH && validWords.has(horizontalWord) && horizontalWord.length > longestWord) {
         longestWord = horizontalWord.length;
         bestLetter = testLetter;
       }
@@ -274,7 +376,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         verticalWord += r === row ? testLetter : currentGrid[r][col].letter;
       }
 
-      if (verticalWord.length >= 2 && validWords.has(verticalWord) && verticalWord.length > longestWord) {
+      if (verticalWord.length >= MIN_WORD_LENGTH && validWords.has(verticalWord) && verticalWord.length > longestWord) {
         longestWord = verticalWord.length;
         bestLetter = testLetter;
       }
@@ -283,84 +385,52 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
     return bestLetter;
   }, [validWords]);
 
-  // Check if cells at positions are isolated (not touching other blocks)
-  const isSolitaryBlock = useCallback((positions: {row: number, col: number}[], currentGrid: Cell[][]): boolean => {
-    const posSet = new Set(positions.map(p => `${p.row},${p.col}`));
-
-    for (const pos of positions) {
-      // Check all 4 adjacent cells
-      const adjacents = [
-        { row: pos.row - 1, col: pos.col },
-        { row: pos.row + 1, col: pos.col },
-        { row: pos.row, col: pos.col - 1 },
-        { row: pos.row, col: pos.col + 1 },
-      ];
-
-      for (const adj of adjacents) {
-        // Skip if out of bounds
-        if (adj.row < 0 || adj.row >= ROWS || adj.col < 0 || adj.col >= COLS) continue;
-        // Skip if it's part of our own block
-        if (posSet.has(`${adj.row},${adj.col}`)) continue;
-        // If there's a letter here, we're not solitary
-        if (currentGrid[adj.row][adj.col].letter !== null) return false;
-      }
-    }
-
-    return true;
-  }, []);
-
   // Add points and check for level up
   const addPoints = useCallback((points: number, combo: number = 0) => {
     const comboMultiplier = combo > 1 ? 1 + (combo - 1) * 0.5 : 1;
     const finalPoints = Math.floor(points * comboMultiplier);
 
+    setTotalScore(prev => prev + finalPoints);
     setLevelScore(prev => {
       const newScore = prev + finalPoints;
-      if (newScore >= 500) {
-        triggerLevelUp();
-        return 0;
-      }
       return newScore;
     });
-    setTotalScore(prev => prev + finalPoints);
   }, []);
 
-  // Trigger level up
-  const triggerLevelUp = useCallback(() => {
-    setShowLevelUp(true);
-    setLevel(prev => prev + 1);
-    setGrid(createEmptyGrid());
-    setFallingBlock(null);
+  // Check and trigger level up
+  useEffect(() => {
+    if (levelScore >= 500 && !showLevelUp) {
+      setShowLevelUp(true);
+      setLevel(prev => prev + 1);
+      setGrid(createEmptyGrid());
+      setFallingBlock(null);
+      setVerticalScanCharges(MAX_VERTICAL_SCAN_CHARGES);
+      setLevelScore(0);
 
-    setTimeout(() => {
-      setShowLevelUp(false);
-    }, 2000);
-  }, []);
+      setTimeout(() => {
+        setShowLevelUp(false);
+      }, 2000);
+    }
+  }, [levelScore, showLevelUp]);
 
-  // Handle Lexical Bomb explosion - convert hit letter to common vowel
+  // Handle Lexical Bomb explosion
   const handleLexicalBomb = useCallback((row: number, col: number) => {
     setGrid(prevGrid => {
       const newGrid = prevGrid.map(r => r.map(c => ({ ...c })));
-
       if (newGrid[row][col].letter !== null) {
         newGrid[row][col].letter = getRandomCommonVowel();
       }
-
       return newGrid;
     });
-
     setLastClearedWords(['💎 LEXICAL BOMB!']);
     setTimeout(() => setLastClearedWords([]), 1500);
   }, []);
 
-  // Handle Destroyer Bomb explosion - 3x3 area clear
+  // Handle Destroyer Bomb explosion
   const handleDestroyerBomb = useCallback((row: number, col: number) => {
     let clearedCount = 0;
-
     setGrid(prevGrid => {
       const newGrid = prevGrid.map(r => r.map(c => ({ ...c })));
-
-      // Clear 3x3 area around impact point
       for (let r = row - 1; r <= row + 1; r++) {
         for (let c = col - 1; c <= col + 1; c++) {
           if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
@@ -371,28 +441,21 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
           }
         }
       }
-
       return newGrid;
     });
-
     if (clearedCount > 0) {
       addPoints(clearedCount * 2, 0);
     }
-
     setLastClearedWords([`💥 DESTROYER! (${clearedCount} cleared)`]);
     setTimeout(() => setLastClearedWords([]), 1500);
-
-    // Trigger cascade after explosion
     setIsProcessing(true);
   }, [addPoints]);
 
   // Land block on grid
   const landBlock = useCallback((block: FallingBlock) => {
-    // Handle bombs
     if (block.blockType === 'lexical-bomb') {
       const targetRow = block.row + 1 < ROWS && grid[block.row + 1][block.col].letter !== null
-        ? block.row
-        : Math.min(block.row, ROWS - 1);
+        ? block.row : Math.min(block.row, ROWS - 1);
       handleLexicalBomb(targetRow, block.col);
       setFallingBlock(null);
       setIsProcessing(true);
@@ -405,89 +468,39 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
       return;
     }
 
-    // Get the letters in correct order based on orientation
     const isReversed = block.orientation === 'horizontal-reversed' || block.orientation === 'vertical-reversed';
     const orderedLetters = isReversed ? [...block.letters].reverse() : block.letters;
     const orderedWildcards = isReversed ? [...block.isWildcard].reverse() : block.isWildcard;
+    const cells = getBlockCells(block);
 
-    const isHorizontal = block.orientation === 'horizontal' || block.orientation === 'horizontal-reversed';
-
-    // Calculate positions
-    const positions: {row: number, col: number}[] = [];
-    if (block.letters.length === 1) {
-      positions.push({ row: block.row, col: block.col });
-    } else if (isHorizontal) {
-      positions.push({ row: block.row, col: block.col });
-      positions.push({ row: block.row, col: block.col + 1 });
-    } else {
-      positions.push({ row: block.row, col: block.col });
-      positions.push({ row: block.row + 1, col: block.col });
-    }
-
-    // Check for Solitary Word Rule (2-letter blocks only)
-    if (block.letters.length === 2) {
-      const word = orderedLetters.join('');
-      const tempGrid = grid.map(r => r.map(c => ({ ...c })));
-
-      // Place temporarily to check isolation
-      positions.forEach((pos, i) => {
-        tempGrid[pos.row][pos.col] = {
-          letter: orderedLetters[i],
-          isWildcard: orderedWildcards[i],
-          id: block.id + i * 0.5
-        };
-      });
-
-      if (validWords.has(word) && isSolitaryBlock(positions, tempGrid)) {
-        // Solitary valid word - score and don't place
-        const points = word.length * word.length;
-        addPoints(points, 0);
-        setLastClearedWords([`${word} (Solitary!) +${points}`]);
-        setTimeout(() => setLastClearedWords([]), 1500);
-        setFallingBlock(null);
-        return;
-      }
-    }
-
-    // Normal landing
     setGrid(prevGrid => {
       const newGrid = prevGrid.map(row => row.map(cell => ({ ...cell })));
-
-      if (block.letters.length === 1) {
-        let letter = orderedLetters[0];
-        if (orderedWildcards[0]) {
-          letter = findBestWildcardLetter(block.row, block.col, newGrid);
-        }
-        newGrid[block.row][block.col] = {
-          letter,
-          isWildcard: orderedWildcards[0],
-          id: block.id
-        };
-      } else {
-        positions.forEach((pos, i) => {
-          newGrid[pos.row][pos.col] = {
-            letter: orderedLetters[i],
+      cells.forEach((cell, i) => {
+        if (cell.row >= 0 && cell.row < ROWS && cell.col >= 0 && cell.col < COLS) {
+          let letter = orderedLetters[i];
+          if (orderedWildcards[i]) {
+            letter = findBestWildcardLetter(cell.row, cell.col, newGrid);
+          }
+          newGrid[cell.row][cell.col] = {
+            letter,
             isWildcard: orderedWildcards[i],
-            id: block.id + i * 0.5
+            id: block.id + i * 0.1
           };
-        });
-      }
-
+        }
+      });
       return newGrid;
     });
 
     setFallingBlock(null);
     setComboCount(0);
     setIsProcessing(true);
-  }, [grid, findBestWildcardLetter, validWords, isSolitaryBlock, addPoints, handleLexicalBomb, handleDestroyerBomb]);
+  }, [grid, getBlockCells, findBestWildcardLetter, handleLexicalBomb, handleDestroyerBomb]);
 
-  // Cascade gravity - returns true if any blocks moved
+  // Cascade gravity
   const applyCascadeGravity = useCallback((): boolean => {
     let moved = false;
-
     setGrid(prevGrid => {
       const newGrid = prevGrid.map(row => row.map(cell => ({ ...cell })));
-
       for (let col = 0; col < COLS; col++) {
         for (let row = ROWS - 2; row >= 0; row--) {
           if (newGrid[row][col].letter !== null && newGrid[row + 1][col].letter === null) {
@@ -501,50 +514,94 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
           }
         }
       }
+      return newGrid;
+    });
+    return moved;
+  }, []);
+
+  // Check and clear completed lines
+  const checkAndClearCompletedLines = useCallback((): number => {
+    let pointsScored = 0;
+    const wordsFound: {word: string, points: number}[] = [];
+    const minLength = isFlashClearActive ? 2 : MIN_WORD_LENGTH;
+    const wordsToCheck = isFlashClearActive ? new Set([...validWords, ...twoLetterValidWords]) : validWords;
+
+    setGrid(prevGrid => {
+      const newGrid = prevGrid.map(row => row.map(cell => ({ ...cell })));
+
+      for (let row = 0; row < ROWS; row++) {
+        let isRowComplete = true;
+        for (let col = 0; col < COLS; col++) {
+          if (newGrid[row][col].letter === null) {
+            isRowComplete = false;
+            break;
+          }
+        }
+
+        if (!isRowComplete) continue;
+
+        const rowLetters = newGrid[row].map(cell => cell.letter).join('');
+        const cellsToClearInRow = new Set<number>();
+
+        for (let startCol = 0; startCol < COLS; startCol++) {
+          for (let endCol = startCol + minLength; endCol <= COLS; endCol++) {
+            const word = rowLetters.substring(startCol, endCol);
+            if (wordsToCheck.has(word)) {
+              const wordPoints = word.length * word.length;
+              wordsFound.push({word, points: wordPoints});
+              pointsScored += wordPoints;
+              for (let c = startCol; c < endCol; c++) {
+                cellsToClearInRow.add(c);
+              }
+            }
+          }
+        }
+
+        cellsToClearInRow.forEach(col => {
+          newGrid[row][col] = { letter: null, isWildcard: false, id: 0 };
+        });
+      }
+
+      if (wordsFound.length > 0) {
+        const prefix = isFlashClearActive ? '⚡ ' : '';
+        setLastClearedWords(wordsFound.map(w => prefix + w.word));
+        setTimeout(() => setLastClearedWords([]), 1500);
+
+        // Add to Word Ledger (deduplicate by word, keep first occurrence)
+        setWordLedger(prev => {
+          const uniqueWords = new Map<string, {word: string, points: number}>();
+          wordsFound.forEach(w => {
+            if (!uniqueWords.has(w.word)) {
+              uniqueWords.set(w.word, w);
+            }
+          });
+
+          const newEntries = Array.from(uniqueWords.values()).map(w => ({
+            word: w.word,
+            points: w.points,
+            id: getNextId()
+          }));
+          return [...newEntries, ...prev].slice(0, 12); // Keep last 12 words
+        });
+      }
 
       return newGrid;
     });
 
-    return moved;
-  }, []);
+    return pointsScored;
+  }, [validWords, twoLetterValidWords, isFlashClearActive]);
 
-  // Find and clear words - returns points scored
-  const findAndClearWords = useCallback((): number => {
+  // Vertical Scan power-up
+  const activateVerticalScan = useCallback(() => {
+    if (verticalScanCharges <= 0 || isProcessing || isGameOver || isPaused) return;
+
     let pointsScored = 0;
-    const wordsFound: string[] = [];
+    const wordsFound: {word: string, points: number}[] = [];
 
     setGrid(prevGrid => {
       const newGrid = prevGrid.map(row => row.map(cell => ({ ...cell })));
       const cellsToClear = new Set<string>();
 
-      // Check horizontal words
-      for (let row = 0; row < ROWS; row++) {
-        let col = 0;
-        while (col < COLS) {
-          if (newGrid[row][col].letter === null) {
-            col++;
-            continue;
-          }
-
-          let word = '';
-          let startCol = col;
-          while (col < COLS && newGrid[row][col].letter !== null) {
-            word += newGrid[row][col].letter;
-            col++;
-          }
-
-          if (word.length >= 2 && validWords.has(word)) {
-            wordsFound.push(word);
-            const points = word.length * word.length;
-            pointsScored += points;
-            for (let c = startCol; c < col; c++) {
-              cellsToClear.add(`${row},${c}`);
-            }
-          }
-        }
-      }
-
-      // Check vertical words
       for (let col = 0; col < COLS; col++) {
         let row = 0;
         while (row < ROWS) {
@@ -560,12 +617,10 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
             row++;
           }
 
-          if (word.length >= 2 && validWords.has(word)) {
-            if (!wordsFound.includes(word) || word.length > 2) {
-              wordsFound.push(word);
-              const points = word.length * word.length;
-              pointsScored += points;
-            }
+          if (word.length >= MIN_WORD_LENGTH && validWords.has(word)) {
+            const wordPoints = word.length * word.length;
+            wordsFound.push({word, points: wordPoints});
+            pointsScored += wordPoints;
             for (let r = startRow; r < row; r++) {
               cellsToClear.add(`${r},${col}`);
             }
@@ -573,57 +628,79 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         }
       }
 
-      // Check for 8-letter bingo
-      for (let row = 0; row < ROWS; row++) {
-        let fullRow = '';
-        for (let col = 0; col < COLS; col++) {
-          if (newGrid[row][col].letter) {
-            fullRow += newGrid[row][col].letter;
-          }
-        }
-        if (fullRow.length === COLS && validWords.has(fullRow)) {
-          wordsFound.push(`BINGO: ${fullRow}`);
-          pointsScored += 64;
-        }
-      }
-
-      if (cellsToClear.size > 0) {
-        cellsToClear.forEach(key => {
-          const [r, c] = key.split(',').map(Number);
-          newGrid[r][c] = { letter: null, isWildcard: false, id: 0 };
-        });
-
-        setLastClearedWords(wordsFound);
-        setTimeout(() => setLastClearedWords([]), 1500);
-      }
+      cellsToClear.forEach(key => {
+        const [r, c] = key.split(',').map(Number);
+        newGrid[r][c] = { letter: null, isWildcard: false, id: 0 };
+      });
 
       return newGrid;
     });
 
-    return pointsScored;
-  }, [validWords]);
+    setVerticalScanCharges(prev => prev - 1);
 
-  // Process cascade and combos
+    if (pointsScored > 0) {
+      addPoints(pointsScored, 0);
+      setLastClearedWords([`⚡ V-SCAN! ${wordsFound.map(w => w.word).join(', ')}`]);
+
+      // Add to Word Ledger (deduplicate by word, keep first occurrence)
+      setWordLedger(prev => {
+        const uniqueWords = new Map<string, {word: string, points: number}>();
+        wordsFound.forEach(w => {
+          if (!uniqueWords.has(w.word)) {
+            uniqueWords.set(w.word, w);
+          }
+        });
+
+        const newEntries = Array.from(uniqueWords.values()).map(w => ({
+          word: w.word,
+          points: w.points,
+          id: getNextId()
+        }));
+        return [...newEntries, ...prev].slice(0, 12); // Keep last 12 words
+      });
+    } else {
+      setLastClearedWords(['⚡ V-SCAN - No words found']);
+    }
+    setTimeout(() => setLastClearedWords([]), 1500);
+    setIsProcessing(true);
+  }, [verticalScanCharges, isProcessing, isGameOver, isPaused, validWords, addPoints]);
+
+  // Flash Clear power-up
+  const activateFlashClear = useCallback(() => {
+    if (isFlashClearActive || isGameOver || isPaused) return;
+    setIsFlashClearActive(true);
+    setFlashClearTimeLeft(FLASH_CLEAR_DURATION);
+  }, [isFlashClearActive, isGameOver, isPaused]);
+
+  // Flash Clear timer
+  useEffect(() => {
+    if (!isFlashClearActive) return;
+    const timer = setInterval(() => {
+      setFlashClearTimeLeft(prev => {
+        if (prev <= 1) {
+          setIsFlashClearActive(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isFlashClearActive]);
+
+  // Process cascade and line-completion
   useEffect(() => {
     if (!isProcessing || isGameOver || isPaused || showLevelUp) return;
 
     const processTimer = setTimeout(() => {
-      // Apply gravity
       applyCascadeGravity();
-
-      // Small delay then check for words
       setTimeout(() => {
-        const points = findAndClearWords();
-
+        const points = checkAndClearCompletedLines();
         if (points > 0) {
           const newCombo = comboCount + 1;
           setComboCount(newCombo);
           addPoints(points, newCombo);
-
-          // Continue processing for more combos
           setIsProcessing(true);
         } else {
-          // No more words, done processing
           setIsProcessing(false);
           setComboCount(0);
         }
@@ -631,39 +708,31 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
     }, 100);
 
     return () => clearTimeout(processTimer);
-  }, [isProcessing, isGameOver, isPaused, showLevelUp, applyCascadeGravity, findAndClearWords, comboCount, addPoints]);
+  }, [isProcessing, isGameOver, isPaused, showLevelUp, applyCascadeGravity, checkAndClearCompletedLines, comboCount, addPoints]);
 
   // 4-Way Flip block orientation
   const flipBlock = useCallback(() => {
     if (!fallingBlock || fallingBlock.letters.length === 1 || fallingBlock.blockType !== 'normal') return;
 
-    // Cycle: horizontal -> vertical -> horizontal-reversed -> vertical-reversed -> horizontal
     const orientationCycle: Orientation[] = ['horizontal', 'vertical', 'horizontal-reversed', 'vertical-reversed'];
     const currentIndex = orientationCycle.indexOf(fallingBlock.orientation);
     const nextIndex = (currentIndex + 1) % 4;
     const newOrientation = orientationCycle[nextIndex];
 
-    const isHorizontalNew = newOrientation === 'horizontal' || newOrientation === 'horizontal-reversed';
+    const testBlock = { ...fallingBlock, orientation: newOrientation };
+    const testCells = getBlockCells(testBlock);
 
-    // Check if new orientation is possible
-    if (isHorizontalNew) {
-      // Need space to the right
-      if (fallingBlock.col + 1 >= COLS) return;
-      if (grid[fallingBlock.row][fallingBlock.col + 1].letter !== null) return;
-    } else {
-      // Need space below
-      if (fallingBlock.row + 1 >= ROWS) return;
-      if (grid[fallingBlock.row + 1][fallingBlock.col].letter !== null) return;
+    for (const cell of testCells) {
+      if (cell.row < 0 || cell.row >= ROWS || cell.col < 0 || cell.col >= COLS) return;
+      if (grid[cell.row][cell.col].letter !== null) return;
     }
 
     setFallingBlock(prev => prev ? { ...prev, orientation: newOrientation } : null);
-  }, [fallingBlock, grid]);
+  }, [fallingBlock, grid, getBlockCells]);
 
   // Move block
   const moveBlock = useCallback((direction: 'left' | 'right' | 'down') => {
-    if (!fallingBlock || isGameOver || isPaused || isScrambleMode || isProcessing) return;
-
-    const isHorizontal = fallingBlock.orientation === 'horizontal' || fallingBlock.orientation === 'horizontal-reversed';
+    if (!fallingBlock || isGameOver || isPaused || isProcessing) return;
 
     if (direction === 'left') {
       const newCol = fallingBlock.col - 1;
@@ -671,10 +740,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         setFallingBlock(prev => prev ? { ...prev, col: newCol } : null);
       }
     } else if (direction === 'right') {
-      let newCol = fallingBlock.col + 1;
-      if (fallingBlock.letters.length === 2 && isHorizontal) {
-        if (newCol + 1 >= COLS) return;
-      }
+      const newCol = fallingBlock.col + 1;
       if (canPlaceBlock(fallingBlock, fallingBlock.row, newCol, fallingBlock.orientation)) {
         setFallingBlock(prev => prev ? { ...prev, col: newCol } : null);
       }
@@ -685,11 +751,11 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
       }
       setFallingBlock(prev => prev ? { ...prev, row: targetRow } : null);
     }
-  }, [fallingBlock, isGameOver, isPaused, isScrambleMode, isProcessing, canPlaceBlock]);
+  }, [fallingBlock, isGameOver, isPaused, isProcessing, canPlaceBlock]);
 
   // Game loop
   useEffect(() => {
-    if (isGameOver || isPaused || isScrambleMode || showLevelUp || isProcessing) return;
+    if (isGameOver || isPaused || showLevelUp || isProcessing) return;
 
     const gameLoop = setInterval(() => {
       if (fallingBlock) {
@@ -698,66 +764,110 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         } else {
           landBlock(fallingBlock);
         }
-      } else {
+      } else if (blockQueue.length === 3) {
         setTimeout(spawnBlock, 100);
       }
     }, dropSpeed);
 
     return () => clearInterval(gameLoop);
-  }, [fallingBlock, isGameOver, isPaused, isScrambleMode, showLevelUp, isProcessing, dropSpeed, canMoveDown, landBlock, spawnBlock]);
+  }, [fallingBlock, isGameOver, isPaused, showLevelUp, isProcessing, dropSpeed, canMoveDown, landBlock, spawnBlock, blockQueue.length]);
 
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isGameOver || isPaused || isScrambleMode || !fallingBlock || isProcessing) return;
+      // Shuffle works even during pause
+      if (e.key === 's' || e.key === 'S') {
+        if (!isGameOver) shuffleRack();
+        return;
+      }
 
-      if (e.key === 'ArrowLeft') {
+      if (isGameOver || isPaused || isProcessing) return;
+
+      if (e.key === 'ArrowLeft' && fallingBlock) {
         moveBlock('left');
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === 'ArrowRight' && fallingBlock) {
         moveBlock('right');
-      } else if (e.key === 'ArrowDown') {
+      } else if (e.key === 'ArrowDown' && fallingBlock) {
         moveBlock('down');
-      } else if (e.key === 'ArrowUp' || e.key === ' ') {
+      } else if ((e.key === 'ArrowUp' || e.key === ' ') && fallingBlock) {
         flipBlock();
+      } else if (e.key === 'v' || e.key === 'V') {
+        activateVerticalScan();
+      } else if (e.key === 'f' || e.key === 'F') {
+        activateFlashClear();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fallingBlock, isGameOver, isPaused, isScrambleMode, isProcessing, moveBlock, flipBlock]);
+  }, [fallingBlock, isGameOver, isPaused, isProcessing, moveBlock, flipBlock, activateVerticalScan, activateFlashClear, shuffleRack]);
 
-  // Scramble timer
-  useEffect(() => {
-    if (!isScrambleMode) return;
-
-    const timer = setInterval(() => {
-      setScrambleTimeLeft(prev => {
-        if (prev <= 1) {
-          setIsScrambleMode(false);
-          setSelectedCell(null);
-          // Trigger processing after scramble ends
-          setIsProcessing(true);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isScrambleMode]);
-
-  // Activate scramble
-  const activateScramble = () => {
-    if (isScrambleMode || isProcessing) return;
-    setIsScrambleMode(true);
-    setScrambleTimeLeft(10);
+  // Rack letter selection
+  const handleRackLetterClick = (blockIndex: number, letterIndex: number) => {
+    if (isGameOver || isPaused) return;
+    
+    // Clear board selection if any
     setSelectedCell(null);
+    
+    if (selectedRackIndex?.blockIndex === blockIndex && selectedRackIndex?.letterIndex === letterIndex) {
+      setSelectedRackIndex(null);
+    } else {
+      setSelectedRackIndex({ blockIndex, letterIndex });
+    }
   };
 
-  // Handle cell click in scramble mode
+  // Real-time swap
   const handleCellClick = (row: number, col: number) => {
-    if (!isScrambleMode || grid[row][col].letter === null) return;
+    if (isGameOver || isPaused || grid[row][col].letter === null) return;
 
+    // Handle Rack-to-Board swap
+    if (selectedRackIndex !== null) {
+      setGrid(prevGrid => {
+        const newGrid = prevGrid.map(r => r.map(c => ({ ...c })));
+        const boardLetter = newGrid[row][col].letter;
+        const boardIsWildcard = newGrid[row][col].isWildcard;
+        
+        setBlockQueue(prevQueue => {
+          const newQueue = [...prevQueue];
+          const rackBlock = { ...newQueue[selectedRackIndex.blockIndex] };
+          const rackLetters = [...rackBlock.letters];
+          const rackWildcards = [...rackBlock.isWildcard];
+          
+          const rackLetter = rackLetters[selectedRackIndex.letterIndex];
+          const rackIsWildcard = rackWildcards[selectedRackIndex.letterIndex];
+          
+          // Swap: board to rack
+          rackLetters[selectedRackIndex.letterIndex] = boardLetter || '';
+          rackWildcards[selectedRackIndex.letterIndex] = boardIsWildcard;
+          
+          newQueue[selectedRackIndex.blockIndex] = {
+            letters: rackLetters,
+            isWildcard: rackWildcards
+          };
+          return newQueue;
+        });
+
+        // Swap: rack to board
+        const rackBlock = blockQueue[selectedRackIndex.blockIndex];
+        newGrid[row][col] = {
+          letter: rackBlock.letters[selectedRackIndex.letterIndex],
+          isWildcard: rackBlock.isWildcard[selectedRackIndex.letterIndex],
+          id: getNextId()
+        };
+        
+        return newGrid;
+      });
+      
+      // Visual feedback: flash
+      setSwappedCell({ row, col });
+      setTimeout(() => setSwappedCell(null), 300);
+      
+      setSelectedRackIndex(null);
+      setIsProcessing(true);
+      return;
+    }
+
+    // Handle Board-to-Board swap (existing logic)
     if (selectedCell === null) {
       setSelectedCell({ row, col });
     } else {
@@ -765,7 +875,6 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         setSelectedCell(null);
         return;
       }
-
       if (grid[row][col].letter !== null) {
         setGrid(prevGrid => {
           const newGrid = prevGrid.map(r => r.map(c => ({ ...c })));
@@ -774,13 +883,19 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
           newGrid[row][col] = temp;
           return newGrid;
         });
+        
+        // Visual feedback: flash
+        setSwappedCell({ row, col });
+        setTimeout(() => setSwappedCell(null), 300);
+        
+        setIsProcessing(true);
       }
       setSelectedCell(null);
     }
   };
 
   // Reset game
-  const resetGame = () => {
+  const resetGame = useCallback(() => {
     setGrid(createEmptyGrid());
     setFallingBlock(null);
     setLevelScore(0);
@@ -789,102 +904,77 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
     setBlocksPlaced(0);
     setIsGameOver(false);
     setIsPaused(false);
-    setIsScrambleMode(false);
-    setScrambleTimeLeft(0);
     setSelectedCell(null);
     setLastClearedWords([]);
     setShowLevelUp(false);
     setComboCount(0);
     setIsProcessing(false);
+    setVerticalScanCharges(MAX_VERTICAL_SCAN_CHARGES);
+    setIsFlashClearActive(false);
+    setFlashClearTimeLeft(0);
+    setBlockTypeSequence(0);
+    setWordLedger([]);
     idCounter.current = 0;
-  };
+    initializeBlockQueue();
+  }, [initializeBlockQueue]);
 
-  // Start game
+  // Start game - initialize block queue
   useEffect(() => {
-    if (!fallingBlock && !isGameOver && blocksPlaced === 0 && !isProcessing) {
-      spawnBlock();
+    if (blockQueue.length === 0 && !isGameOver && blocksPlaced === 0) {
+      initializeBlockQueue();
     }
-  }, []);
+  }, [blockQueue.length, isGameOver, blocksPlaced, initializeBlockQueue]);
 
-  // Get orientation indicator text
+  // Get orientation indicator
   const getOrientationIndicator = (): string => {
-    if (!fallingBlock || fallingBlock.letters.length !== 2) return '';
-    const [a, b] = fallingBlock.letters;
-    switch (fallingBlock.orientation) {
-      case 'horizontal': return `${a}-${b}`;
-      case 'vertical': return `${a}/${b}`;
-      case 'horizontal-reversed': return `${b}-${a}`;
-      case 'vertical-reversed': return `${b}/${a}`;
-    }
+    if (!fallingBlock || fallingBlock.letters.length < 2) return '';
+    const letters = fallingBlock.letters;
+    const isReversed = fallingBlock.orientation === 'horizontal-reversed' || fallingBlock.orientation === 'vertical-reversed';
+    const isHorizontal = fallingBlock.orientation === 'horizontal' || fallingBlock.orientation === 'horizontal-reversed';
+    const orderedLetters = isReversed ? [...letters].reverse() : letters;
+    return isHorizontal ? orderedLetters.join('-') : orderedLetters.join('/');
   };
 
   // Render falling block cells
   const getFallingBlockCells = (): {row: number, col: number, letter: string, isWildcard: boolean, isBomb: BlockType}[] => {
     if (!fallingBlock) return [];
-
-    const cells: {row: number, col: number, letter: string, isWildcard: boolean, isBomb: BlockType}[] = [];
+    const cells = getBlockCells(fallingBlock);
     const isReversed = fallingBlock.orientation === 'horizontal-reversed' || fallingBlock.orientation === 'vertical-reversed';
-    const isHorizontal = fallingBlock.orientation === 'horizontal' || fallingBlock.orientation === 'horizontal-reversed';
-
     const orderedLetters = isReversed ? [...fallingBlock.letters].reverse() : fallingBlock.letters;
     const orderedWildcards = isReversed ? [...fallingBlock.isWildcard].reverse() : fallingBlock.isWildcard;
+    return cells.map((cell, i) => ({
+      row: cell.row,
+      col: cell.col,
+      letter: orderedLetters[i],
+      isWildcard: orderedWildcards[i],
+      isBomb: fallingBlock.blockType
+    }));
+  };
 
-    if (fallingBlock.letters.length === 1) {
-      cells.push({
-        row: fallingBlock.row,
-        col: fallingBlock.col,
-        letter: orderedLetters[0],
-        isWildcard: orderedWildcards[0],
-        isBomb: fallingBlock.blockType
-      });
-    } else {
-      if (isHorizontal) {
-        cells.push({
-          row: fallingBlock.row,
-          col: fallingBlock.col,
-          letter: orderedLetters[0],
-          isWildcard: orderedWildcards[0],
-          isBomb: fallingBlock.blockType
-        });
-        cells.push({
-          row: fallingBlock.row,
-          col: fallingBlock.col + 1,
-          letter: orderedLetters[1],
-          isWildcard: orderedWildcards[1],
-          isBomb: fallingBlock.blockType
-        });
-      } else {
-        cells.push({
-          row: fallingBlock.row,
-          col: fallingBlock.col,
-          letter: orderedLetters[0],
-          isWildcard: orderedWildcards[0],
-          isBomb: fallingBlock.blockType
-        });
-        cells.push({
-          row: fallingBlock.row + 1,
-          col: fallingBlock.col,
-          letter: orderedLetters[1],
-          isWildcard: orderedWildcards[1],
-          isBomb: fallingBlock.blockType
-        });
-      }
-    }
-
-    return cells;
+  // Get ghost cells
+  const getGhostCells = (): {row: number, col: number}[] => {
+    if (!fallingBlock || fallingBlock.blockType !== 'normal') return [];
+    const ghostRow = getGhostPosition(fallingBlock);
+    if (ghostRow === fallingBlock.row) return [];
+    const ghostBlock = { ...fallingBlock, row: ghostRow };
+    return getBlockCells(ghostBlock);
   };
 
   const fallingCells = getFallingBlockCells();
+  const ghostCells = getGhostCells();
+
+  // Block labels for the rack
+  const blockLabels = ['A', 'B', 'C'];
 
   return (
     <div className="h-[100svh] w-full flex flex-col overflow-hidden bg-stone-900">
-      {/* ===== HEADER (Fixed Height) ===== */}
+      {/* ===== HEADER ===== */}
       <header className="h-14 shrink-0 flex items-center justify-between px-3 bg-stone-800 border-b border-stone-700">
         <button onClick={onExit} className="p-2 text-stone-400 hover:text-stone-200 transition-colors">
           <ArrowLeft size={20} />
         </button>
 
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
           <div className="text-center">
             <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider block leading-none">Level</span>
             <span className="text-lg font-black text-amber-500 leading-none">{level}</span>
@@ -895,17 +985,34 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
           </div>
           <div className="text-center">
             <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider block leading-none">Next</span>
-            <span className="text-lg font-black text-emerald-400 tabular-nums leading-none">{500 - levelScore}</span>
+            <span className="text-lg font-black text-emerald-400 tabular-nums leading-none">{Math.max(0, 500 - levelScore)}</span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            {Array.from({ length: MAX_VERTICAL_SCAN_CHARGES }).map((_, i) => (
+              <div
+                key={i}
+                className={`w-4 h-4 rounded-full flex items-center justify-center transition-all ${
+                  i < verticalScanCharges ? 'bg-cyan-500 shadow-lg shadow-cyan-500/50' : 'bg-stone-700'
+                }`}
+              >
+                {i < verticalScanCharges && <Zap size={10} className="text-white" />}
+              </div>
+            ))}
           </div>
         </div>
 
         <div className="flex gap-1">
           <button
             onClick={() => setIsPaused(!isPaused)}
-            disabled={isGameOver || isScrambleMode}
-            className="p-2 text-stone-400 hover:text-stone-200 transition-colors disabled:opacity-50"
+            disabled={isGameOver}
+            className={`px-4 py-2 rounded-lg font-bold transition-all disabled:opacity-50 ${
+              isPaused
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                : 'bg-amber-600 hover:bg-amber-500 text-stone-900'
+            }`}
           >
-            {isPaused ? <Play size={18} /> : <Pause size={18} />}
+            {isPaused ? <Play size={20} /> : <Pause size={20} />}
           </button>
           <button onClick={resetGame} className="p-2 text-stone-400 hover:text-stone-200 transition-colors">
             <RotateCcw size={18} />
@@ -913,49 +1020,60 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         </div>
       </header>
 
-      {/* ===== GAME BOARD (Flex Grow - Takes Remaining Space) ===== */}
-      <main className="flex-grow flex items-center justify-center p-2 min-h-0 overflow-hidden relative">
-        {/* Word cleared notification */}
-        {lastClearedWords.length > 0 && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20">
-            <div className={`px-3 py-1.5 rounded-lg font-black text-sm shadow-lg animate-pulse ${
-              comboCount > 1 ? 'bg-purple-500 text-white' : 'bg-amber-500 text-stone-900'
-            }`}>
-              {comboCount > 1 && <span className="mr-2">🔥 COMBO x{comboCount}!</span>}
-              {lastClearedWords.map((w, i) => (
-                <span key={i}>{w} </span>
-              ))}
+      {/* ===== GAME AREA ===== */}
+      <main className="flex-grow flex flex-col lg:flex-row justify-center items-start gap-4 p-4 min-h-0 overflow-hidden">
+        {/* LEFT SIDE: Board + Controls */}
+        <div className="flex flex-col items-center gap-3">
+          {/* Board Container */}
+          <div className="relative w-[320px] h-[600px] overflow-hidden">
+          {/* Notifications */}
+          {lastClearedWords.length > 0 && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20">
+              <div className={`px-3 py-1.5 rounded-lg font-black text-sm shadow-lg animate-pulse ${
+                comboCount > 1 ? 'bg-purple-500 text-white' : isFlashClearActive ? 'bg-orange-500 text-white' : 'bg-amber-500 text-stone-900'
+              }`}>
+                {comboCount > 1 && <span className="mr-2">🔥 CHAIN x{comboCount}!</span>}
+                {lastClearedWords.map((w, i) => <span key={i}>{w} </span>)}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Level Up notification */}
-        {showLevelUp && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="text-center animate-pulse">
-              <div className="text-5xl font-black text-amber-400 mb-2">LEVEL {level}!</div>
-              <div className="text-lg text-stone-300">Speed increased!</div>
+          {showLevelUp && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+              <div className="text-center animate-pulse">
+                <div className="text-5xl font-black text-amber-400 mb-2">LEVEL {level}!</div>
+                <div className="text-lg text-stone-300">Speed increased! Charges restored!</div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* The Board */}
-        <div
-          className="grid gap-px bg-stone-800 p-1 rounded-lg shadow-2xl border border-stone-700 max-h-full w-auto"
-          style={{
-            gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-            aspectRatio: `${COLS}/${ROWS}`,
-          }}
-        >
+          {/* Glass Pause Overlay */}
+          {isPaused && !isGameOver && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center backdrop-blur-sm bg-black/20">
+              <div className="text-4xl font-black text-white drop-shadow-lg animate-pulse">PAUSED</div>
+            </div>
+          )}
+
+          {/* The Board */}
+          <div
+            className="grid gap-px bg-stone-800 p-1 rounded-lg shadow-2xl border border-stone-700 max-h-full w-auto relative"
+            style={{
+              gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+              aspectRatio: `${COLS}/${ROWS}`,
+            }}
+          >
           {grid.map((row, rowIndex) =>
             row.map((cell, colIndex) => {
               const fallingCell = fallingCells.find(fc => fc.row === rowIndex && fc.col === colIndex);
+              const isGhostCell = ghostCells.some(gc => gc.row === rowIndex && gc.col === colIndex);
               const displayLetter = fallingCell ? fallingCell.letter : cell.letter;
               const isWildcard = fallingCell ? fallingCell.isWildcard : cell.isWildcard;
               const isFalling = !!fallingCell;
               const isSelected = selectedCell?.row === rowIndex && selectedCell?.col === colIndex;
+              const isSwapped = swappedCell?.row === rowIndex && swappedCell?.col === colIndex;
               const isLightSquare = (rowIndex + colIndex) % 2 === 0;
               const bombType = fallingCell?.isBomb || 'normal';
+              const isRowComplete = grid[rowIndex].every(c => c.letter !== null);
 
               return (
                 <div
@@ -967,9 +1085,12 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
                     transition-all duration-100
                     w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8
                     ${isLightSquare ? 'bg-stone-700' : 'bg-stone-600'}
+                    ${isRowComplete && !isFalling ? 'ring-1 ring-emerald-500/50' : ''}
                     ${displayLetter ? 'cursor-pointer' : ''}
-                    ${isScrambleMode && cell.letter ? 'hover:ring-2 hover:ring-amber-400' : ''}
-                    ${isSelected ? 'ring-2 ring-amber-400 bg-amber-900/50' : ''}
+                    ${cell.letter ? 'hover:ring-2 hover:ring-amber-400/50' : ''}
+                    ${isSelected ? 'ring-2 ring-yellow-400 bg-amber-900/50 z-10 scale-105' : ''}
+                    ${isSwapped ? 'animate-ping bg-white ring-4 ring-white z-20' : ''}
+                    ${isGhostCell && !isFalling && !displayLetter ? 'bg-indigo-900/40 ring-1 ring-indigo-500/30' : ''}
                     ${isFalling && bombType === 'normal' ? 'bg-indigo-600 ring-1 ring-indigo-400' : ''}
                     ${isFalling && bombType === 'lexical-bomb' ? 'bg-blue-500 ring-2 ring-blue-300 animate-pulse' : ''}
                     ${isFalling && bombType === 'destroyer-bomb' ? 'bg-red-500 ring-2 ring-red-300 animate-pulse' : ''}
@@ -988,84 +1109,241 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
               );
             })
           )}
+          </div>
+          </div>
+
+          {/* ===== CONVEYOR BELT RACK ===== */}
+          <div className="flex items-center gap-3">
+            {/* Conveyor Belt Pipeline */}
+            <div
+              className="flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border-2 border-amber-900/60"
+              style={{
+                background: 'linear-gradient(180deg, #d4a574 0%, #c4956a 50%, #b38560 100%)',
+                boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.3), inset 0 -2px 4px rgba(0,0,0,0.2), 0 4px 8px rgba(0,0,0,0.3)'
+              }}
+            >
+              {/* Active Block (Far Left) */}
+              <div className="flex flex-col items-center">
+                <span className="text-[9px] font-bold mb-1 text-amber-900 uppercase">Active</span>
+                <div className="flex gap-0.5 p-1.5 rounded bg-amber-100/50 ring-2 ring-amber-600">
+                  {blockQueue[0]?.letters.map((letter, i) => {
+                    const isSelected = selectedRackIndex?.blockIndex === 0 && selectedRackIndex?.letterIndex === i;
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => handleRackLetterClick(0, i)}
+                        className={`w-7 h-7 flex items-center justify-center rounded font-black text-base shadow-md cursor-pointer transition-all
+                          ${blockQueue[0].isWildcard[i] ? 'bg-amber-200 text-amber-700' : 'bg-amber-50 text-stone-800'}
+                          ${isSelected ? 'ring-2 ring-yellow-400 scale-110 z-10' : ''}
+                        `}
+                        style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.5)' }}
+                      >
+                        {letter}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="w-px h-12 bg-amber-800/40" />
+
+              {/* Next Block (Middle) */}
+              <div className="flex flex-col items-center">
+                <span className="text-[9px] font-bold mb-1 text-amber-800/70 uppercase">Next</span>
+                <div className="flex gap-0.5 p-1 rounded bg-amber-200/30">
+                  {blockQueue[1]?.letters.map((letter, i) => {
+                    const isSelected = selectedRackIndex?.blockIndex === 1 && selectedRackIndex?.letterIndex === i;
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => handleRackLetterClick(1, i)}
+                        className={`w-6 h-6 flex items-center justify-center rounded font-bold text-sm shadow-sm cursor-pointer transition-all
+                          ${blockQueue[1].isWildcard[i] ? 'bg-amber-200 text-amber-700' : 'bg-amber-50 text-stone-700'}
+                          ${isSelected ? 'ring-2 ring-yellow-400 scale-110 z-10' : ''}
+                        `}
+                        style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.15)' }}
+                      >
+                        {letter}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="w-px h-12 bg-amber-800/40" />
+
+              {/* On-Deck Block (Far Right) */}
+              <div className="flex flex-col items-center">
+                <span className="text-[9px] font-bold mb-1 text-amber-800/60 uppercase">On-Deck</span>
+                <div className="flex gap-0.5 p-1 rounded bg-amber-200/20">
+                  {blockQueue[2]?.letters.map((letter, i) => {
+                    const isSelected = selectedRackIndex?.blockIndex === 2 && selectedRackIndex?.letterIndex === i;
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => handleRackLetterClick(2, i)}
+                        className={`w-5 h-5 flex items-center justify-center rounded font-bold text-xs shadow-sm cursor-pointer transition-all
+                          ${blockQueue[2].isWildcard[i] ? 'bg-amber-200 text-amber-700' : 'bg-amber-50 text-stone-600'}
+                          ${isSelected ? 'ring-2 ring-yellow-400 scale-110 z-10' : ''}
+                        `}
+                        style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}
+                      >
+                        {letter}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Shuffle Button */}
+            <button
+              onClick={shuffleRack}
+              disabled={isGameOver}
+              className="p-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 active:bg-amber-400 text-white shadow-lg transition-all disabled:opacity-50"
+              title="Shuffle letters [S]"
+            >
+              <RefreshCw size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* RIGHT SIDE: Word Ledger (Minimal History) */}
+        <div className="w-full lg:w-48 min-w-[150px] flex flex-col bg-stone-800/50 rounded-lg border border-stone-700 p-3 overflow-hidden max-h-[500px]">
+          <h3 className="text-sm font-bold text-amber-400 mb-2 text-center uppercase tracking-wider">Words</h3>
+          <div className="flex-1 overflow-y-auto space-y-1">
+            {wordLedger.length === 0 ? (
+              <p className="text-stone-500 text-xs text-center italic mt-2">No words yet</p>
+            ) : (
+              wordLedger.map((entry, index) => (
+                <div
+                  key={entry.id}
+                  className={`flex items-center justify-between px-2 py-1 rounded text-xs transition-all ${
+                    index === 0 ? 'bg-amber-900/40 animate-pulse' : 'bg-stone-700/30'
+                  }`}
+                >
+                  <span className="font-bold text-stone-200">{entry.word}</span>
+                  <span className="font-black text-amber-400 text-[10px]">+{entry.points}</span>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </main>
 
-      {/* ===== CONTROL DECK (Fixed Height at Bottom) ===== */}
-      <footer className="h-44 shrink-0 bg-stone-800 border-t-2 border-stone-700 px-3 pt-2 pb-4 flex flex-col">
+      {/* ===== CONTROL DECK ===== */}
+      <footer className="h-60 shrink-0 bg-stone-800 border-t-2 border-stone-700 px-3 pt-2 pb-4 flex flex-col">
         {/* Status Bar */}
         <div className="flex items-center justify-center gap-4 mb-2 h-6">
-          {isScrambleMode ? (
-            <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
-              <Shuffle size={14} />
-              <span>SCRAMBLE: {scrambleTimeLeft}s - Tap to swap</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 text-stone-500 text-xs uppercase tracking-wider">
-              <span>Bomb in {20 - (blocksPlaced % 20)}</span>
-              {fallingBlock && fallingBlock.letters.length === 2 && fallingBlock.blockType === 'normal' && (
-                <span className="text-indigo-400 font-bold">{getOrientationIndicator()}</span>
-              )}
-              {fallingBlock?.blockType === 'lexical-bomb' && (
-                <span className="text-blue-400 flex items-center gap-1"><Sparkles size={12} /> Lexical</span>
-              )}
-              {fallingBlock?.blockType === 'destroyer-bomb' && (
-                <span className="text-red-400 flex items-center gap-1"><Bomb size={12} /> Destroyer</span>
-              )}
-            </div>
-          )}
+          <div className="flex items-center gap-3 text-stone-500 text-xs uppercase tracking-wider">
+            <span className="text-emerald-400 font-bold">FLOW: 3+ Letters</span>
+            {fallingBlock && fallingBlock.letters.length >= 2 && fallingBlock.blockType === 'normal' && (
+              <span className="text-indigo-400 font-bold">{getOrientationIndicator()}</span>
+            )}
+            {fallingBlock?.blockType === 'lexical-bomb' && (
+              <span className="text-blue-400 flex items-center gap-1"><Sparkles size={12} /> Lexical</span>
+            )}
+            {fallingBlock?.blockType === 'destroyer-bomb' && (
+              <span className="text-red-400 flex items-center gap-1"><Bomb size={12} /> Destroyer</span>
+            )}
+            {(selectedCell || selectedRackIndex) && <span className="text-yellow-400 font-bold animate-pulse">SWAP MODE</span>}
+          </div>
         </div>
 
+        {/* Flash Clear Progress Bar */}
+        {isFlashClearActive && (
+          <div className="mb-2 mx-auto max-w-md w-full">
+            <div className="flex items-center gap-2 text-orange-400 text-xs font-bold mb-1">
+              <Flame size={14} />
+              <span>FLASH CLEAR - 2+ Letters!</span>
+              <span className="ml-auto">{flashClearTimeLeft}s</span>
+            </div>
+            <div className="h-2 bg-stone-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-orange-500 to-yellow-400 transition-all duration-1000"
+                style={{ width: `${(flashClearTimeLeft / FLASH_CLEAR_DURATION) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Control Buttons */}
-        <div className="flex-grow grid grid-cols-4 grid-rows-2 gap-2 max-w-md mx-auto w-full">
-          <button
-            onClick={() => moveBlock('left')}
-            disabled={!fallingBlock || isGameOver || isPaused || isScrambleMode || isProcessing}
-            className="bg-stone-700 hover:bg-stone-600 active:bg-stone-500 rounded-xl text-stone-300 font-black disabled:opacity-30 transition-all border border-stone-600 flex items-center justify-center touch-manipulation"
-          >
-            <ChevronLeft size={32} />
-          </button>
+        <div className="flex-grow flex flex-col gap-2 max-w-md mx-auto w-full">
+          {/* Row 1: Movement + Flip */}
+          <div className="flex gap-2 h-16">
+            <button
+              onClick={() => moveBlock('left')}
+              disabled={!fallingBlock || isGameOver || isPaused || isProcessing}
+              className="flex-1 bg-stone-700 hover:bg-stone-600 active:bg-stone-500 rounded-xl text-stone-300 font-black disabled:opacity-30 transition-all border border-stone-600 flex items-center justify-center touch-manipulation"
+            >
+              <ChevronLeft size={28} />
+            </button>
 
-          <button
-            onClick={() => moveBlock('down')}
-            disabled={!fallingBlock || isGameOver || isPaused || isScrambleMode || isProcessing}
-            className="bg-stone-700 hover:bg-stone-600 active:bg-stone-500 rounded-xl text-stone-300 font-black disabled:opacity-30 transition-all border border-stone-600 flex items-center justify-center touch-manipulation"
-          >
-            <ChevronDown size={32} />
-          </button>
+            <button
+              onClick={flipBlock}
+              disabled={!fallingBlock || fallingBlock.letters.length === 1 || fallingBlock.blockType !== 'normal' || isGameOver || isPaused || isProcessing}
+              className={`flex-1 rounded-xl font-bold transition-all border flex items-center justify-center touch-manipulation ${
+                fallingBlock && fallingBlock.letters.length >= 2 && fallingBlock.blockType === 'normal'
+                  ? 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-400 text-white border-indigo-500'
+                  : 'bg-stone-700 text-stone-500 border-stone-600 opacity-40'
+              }`}
+            >
+              <FlipVertical size={24} />
+            </button>
 
-          <button
-            onClick={() => moveBlock('right')}
-            disabled={!fallingBlock || isGameOver || isPaused || isScrambleMode || isProcessing}
-            className="bg-stone-700 hover:bg-stone-600 active:bg-stone-500 rounded-xl text-stone-300 font-black disabled:opacity-30 transition-all border border-stone-600 flex items-center justify-center touch-manipulation"
-          >
-            <ChevronRight size={32} />
-          </button>
+            <button
+              onClick={() => moveBlock('right')}
+              disabled={!fallingBlock || isGameOver || isPaused || isProcessing}
+              className="flex-1 bg-stone-700 hover:bg-stone-600 active:bg-stone-500 rounded-xl text-stone-300 font-black disabled:opacity-30 transition-all border border-stone-600 flex items-center justify-center touch-manipulation"
+            >
+              <ChevronRight size={28} />
+            </button>
+          </div>
 
-          <button
-            onClick={flipBlock}
-            disabled={!fallingBlock || fallingBlock.letters.length === 1 || fallingBlock.blockType !== 'normal' || isGameOver || isPaused || isScrambleMode || isProcessing}
-            className={`rounded-xl font-bold transition-all border flex items-center justify-center touch-manipulation ${
-              fallingBlock && fallingBlock.letters.length === 2 && fallingBlock.blockType === 'normal'
-                ? 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-400 text-white border-indigo-500'
-                : 'bg-stone-700 text-stone-500 border-stone-600 opacity-40'
-            }`}
-          >
-            <FlipVertical size={28} />
-          </button>
+          {/* Row 2: Fast Drop */}
+          <div className="flex justify-center h-16">
+            <button
+              onClick={() => moveBlock('down')}
+              disabled={!fallingBlock || isGameOver || isPaused || isProcessing}
+              className="w-1/2 bg-stone-700 hover:bg-stone-600 active:bg-stone-500 rounded-xl text-stone-300 font-black disabled:opacity-30 transition-all border border-stone-600 flex items-center justify-center touch-manipulation"
+            >
+              <ChevronDown size={28} />
+            </button>
+          </div>
 
-          <button
-            onClick={activateScramble}
-            disabled={isScrambleMode || isGameOver || isProcessing}
-            className={`col-span-4 rounded-xl font-black text-lg transition-all border flex items-center justify-center gap-2 touch-manipulation ${
-              isScrambleMode
-                ? 'bg-amber-500/20 text-amber-400 border-amber-500/50'
-                : 'bg-amber-600 hover:bg-amber-500 active:bg-amber-400 text-stone-900 border-amber-500'
-            } disabled:opacity-50`}
-          >
-            <Shuffle size={24} />
-            <span>SCRAMBLE MODE</span>
-          </button>
+          {/* Row 3: V-Scan + Flash Clear (Added to maintain functionality) */}
+          <div className="flex gap-2 h-16">
+            <button
+              onClick={activateVerticalScan}
+              disabled={verticalScanCharges <= 0 || isGameOver || isPaused || isProcessing}
+              className={`flex-1 rounded-xl font-black text-xs transition-all border flex items-center justify-center gap-2 touch-manipulation ${
+                verticalScanCharges > 0
+                  ? 'bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-400 text-white border-cyan-500'
+                  : 'bg-stone-700 text-stone-500 border-stone-600 opacity-40'
+              }`}
+            >
+              <Zap size={20} />
+              <span>V-SCAN ({verticalScanCharges})</span>
+            </button>
+
+            <button
+              onClick={activateFlashClear}
+              disabled={isFlashClearActive || isGameOver || isPaused}
+              className={`flex-1 rounded-xl font-black text-xs transition-all border flex items-center justify-center gap-2 touch-manipulation ${
+                isFlashClearActive
+                  ? 'bg-orange-500/20 text-orange-400 border-orange-500/50'
+                  : 'bg-orange-600 hover:bg-orange-500 active:bg-orange-400 text-white border-orange-500'
+              } disabled:opacity-50`}
+            >
+              <Flame size={20} />
+              <span>FLASH CLEAR</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Info text */}
+        <div className="text-center text-stone-600 text-[10px] uppercase tracking-wider mt-1">
+          [S] Shuffle rack • [F] Flash • [V] Scan • Tap letters to swap
         </div>
       </footer>
 
@@ -1090,20 +1368,6 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
                 Exit
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {isPaused && !isGameOver && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-stone-800 rounded-2xl p-8 shadow-2xl max-w-sm w-full text-center border border-stone-700">
-            <h2 className="text-3xl font-black text-stone-100 mb-6">Paused</h2>
-            <button
-              onClick={() => setIsPaused(false)}
-              className="py-4 px-8 bg-amber-600 hover:bg-amber-500 rounded-xl text-stone-900 font-black text-lg transition-all"
-            >
-              Resume
-            </button>
           </div>
         </div>
       )}

@@ -4,6 +4,7 @@ import HookView from './components/HookView';
 import TrainingView from './components/TrainingView';
 import ChallengeView from './components/ChallengeView';
 import BogeyPage from './components/BogeyPage';
+import Lextris from './components/Lextris';
 import { 
   AppMode, 
   WordEntry, 
@@ -537,12 +538,22 @@ const App: React.FC = () => {
             </button>
 
             {/* CHALLENGE BUTTON */}
-            <button 
+            <button
               onClick={() => handleStartChallenge()}
               className="mt-2 w-full py-6 bg-gradient-to-r from-indigo-500 to-violet-600 text-white rounded-[2rem] font-black text-xl shadow-xl shadow-indigo-200 hover:shadow-indigo-300 transition-all flex items-center justify-center gap-2"
             >
               <Trophy size={24} className="text-yellow-300" />
               <span>Challenge Arena</span>
+            </button>
+
+            {/* LEXTRIS BUTTON */}
+            <button
+              onClick={() => setMode(AppMode.LEXTRIS)}
+              className="w-full py-6 bg-gradient-to-r from-stone-800 to-stone-900 text-white rounded-[2rem] font-black text-xl shadow-xl hover:shadow-2xl transition-all flex items-center justify-center gap-3 border border-stone-700"
+            >
+              <span className="text-2xl">🎮</span>
+              <span>LEXTRIS</span>
+              <span className="text-stone-500 text-sm font-bold">Word Tetris</span>
             </button>
           </div>
         )}
@@ -607,10 +618,17 @@ const App: React.FC = () => {
         )}
 
         {mode === AppMode.BOGEY && bogeyWord && (
-          <BogeyPage 
+          <BogeyPage
              word={bogeyWord}
              sourceMode={bogeySource}
              onContinue={(target) => setMode(target)}
+          />
+        )}
+
+        {mode === AppMode.LEXTRIS && (
+          <Lextris
+            fullDictionary={CSW_DICTIONARY}
+            onExit={handleHome}
           />
         )}
 

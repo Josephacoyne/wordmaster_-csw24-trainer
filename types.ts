@@ -20,7 +20,8 @@ export enum AppMode {
   TRAINING = 'TRAINING',
   CHALLENGE = 'CHALLENGE',
   BOGEY = 'BOGEY',
-  HOOKS = 'HOOKS'
+  HOOKS = 'HOOKS',
+  LEXTRIS = 'LEXTRIS'
 }
 
 export type WordLength = 2 | 3 | 4 | 'ALL';

@@ -44,6 +44,7 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   const [streak, setStreak] = useState(0);
   const [result, setResult] = useState<'CORRECT' | 'WRONG' | null>(null);
   const [isComplete, setIsComplete] = useState(false);
+  const [flashDefinition, setFlashDefinition] = useState<string | null>(null);
   
   // Letter Progression State
   const [showLetterModal, setShowLetterModal] = useState(false);
@@ -155,6 +156,7 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
 
   const nextWord = () => {
     setResult(null);
+    setFlashDefinition(null);
 
     // Check Letter Boundary for 3L/4L Alpha
     if (order === 'ALPHA' && (targetLength === 3 || targetLength === 4) && deckIndex < deck.length - 1) {
@@ -187,7 +189,14 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
       if (newStreak > topStreak) {
         onUpdateHighScore(newStreak);
       }
-      setTimeout(nextWord, 600);
+
+      // Show definition flash for real words
+      if (currentItem.isReal && currentItem.data?.d) {
+        setFlashDefinition(currentItem.data.d);
+        setTimeout(nextWord, 1000); // Longer delay to read definition
+      } else {
+        setTimeout(nextWord, 600);
+      }
     } else {
       setResult('WRONG');
       // Bogey if they missed a real word
@@ -632,9 +641,18 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
            </span>
         </div>
 
-        <div className="h-8 flex items-center justify-center font-black text-lg tracking-widest uppercase mt-4 shrink-0">
-           {result === 'CORRECT' && <span className="text-emerald-500 animate-in fade-in slide-in-from-bottom-2">Correct!</span>}
-           {result === 'WRONG' && <span className="text-rose-500 animate-in fade-in slide-in-from-bottom-2">Wrong!</span>}
+        <div className="flex flex-col items-center justify-center mt-4 shrink-0 min-h-[4rem]">
+           {result === 'CORRECT' && (
+             <div className="flex flex-col items-center gap-1 animate-in fade-in slide-in-from-bottom-2">
+               <span className="text-emerald-500 font-black text-lg tracking-widest uppercase">Correct!</span>
+               {flashDefinition && (
+                 <p className="text-slate-600 text-xl font-medium text-center px-4 max-w-md leading-snug">
+                   {flashDefinition}
+                 </p>
+               )}
+             </div>
+           )}
+           {result === 'WRONG' && <span className="text-rose-500 font-black text-lg tracking-widest uppercase animate-in fade-in slide-in-from-bottom-2">Wrong!</span>}
         </div>
       </div>
 

@@ -718,7 +718,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         )}
 
         {/* Grid + Scoreboard side by side */}
-        <div className="flex items-end justify-center gap-4 pl-4">
+        <div className="flex items-end justify-center gap-2 pl-6">
           {/* Grid column */}
           <div className="flex items-center justify-center" style={{ width: gridWrapperWidth }}>
           <div

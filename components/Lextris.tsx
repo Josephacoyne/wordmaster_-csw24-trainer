@@ -687,15 +687,17 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
 
   return (
     <div className="h-[100svh] w-full bg-gradient-to-br from-stone-900 via-stone-800 to-stone-900 text-white flex flex-col overflow-hidden">
-      <main className="flex-1 flex flex-col md:flex-row items-center md:items-end justify-center gap-2 md:gap-8 p-2 md:p-4 overflow-hidden" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
-        <div className="flex flex-col items-center gap-2">
-          {/* Hook bonus indicator */}
-          {hookBonusMessage && (
-            <div className="px-4 py-2 bg-amber-600/90 rounded-lg text-stone-900 font-black text-sm animate-pulse">
-              {hookBonusMessage}
-            </div>
-          )}
+      <main className="flex-1 flex flex-col items-center justify-end p-2 md:p-4 overflow-hidden" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
+        {/* Hook bonus indicator */}
+        {hookBonusMessage && (
+          <div className="px-4 py-2 mb-2 bg-amber-600/90 rounded-lg text-stone-900 font-black text-sm animate-pulse">
+            {hookBonusMessage}
+          </div>
+        )}
 
+        {/* Grid + Scoreboard side by side */}
+        <div className="flex items-end justify-center gap-4">
+          {/* Grid column */}
           <div className="flex items-center justify-center" style={{ width: gridWrapperWidth }}>
           <div
             className="grid gap-[2px] bg-stone-800 p-2 rounded-lg shadow-2xl border-2 border-stone-700 transition-all duration-300"
@@ -709,14 +711,9 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
                 const isFalling = fallingLetter && fallingRow === rowIndex && fallingCol === colIndex;
                 const displayLetter = isFalling ? fallingLetter : cell.letter;
 
-                // In hook phase, highlight the base word cells
                 const isBaseWordCell = hookPhase !== 'none' && rowIndex === anchorRow && hookWordCols.includes(colIndex);
-                // In normal phase, highlight anchor
                 const isAnchor = hookPhase === 'none' && anchorLetter && rowIndex === anchorRow && colIndex === 1 && cell.letter === anchorLetter;
-
                 const isFlashing = flashingCells.some(fc => fc.row === rowIndex && fc.col === colIndex);
-
-                // Hook phase: highlight valid drop zones (col 0 and col activeCols-1)
                 const isDropZone = hookPhase !== 'none' && rowIndex === anchorRow && (colIndex === 0 || colIndex === activeCols - 1) && !cell.letter;
 
                 return (
@@ -744,41 +741,26 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
           </div>
           </div>
 
-          <div className="flex gap-2">
-            <button onClick={moveLeft} disabled={!fallingLetter || isGameOver || isPaused}
-              className="w-14 h-14 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
-              <ChevronLeft size={28} />
-            </button>
-            <button onClick={moveDown} disabled={!fallingLetter || isGameOver || isPaused}
-              className="w-14 h-14 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
-              <ChevronDown size={28} />
-            </button>
-            <button onClick={moveRight} disabled={!fallingLetter || isGameOver || isPaused}
-              className="w-14 h-14 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
-              <ChevronRight size={28} />
-            </button>
-          </div>
-        </div>
-
-        <div className="w-full md:w-64 max-h-40 md:max-h-none md:h-full flex flex-col bg-stone-800/90 rounded-lg border-2 border-stone-700 p-3 md:p-4 shadow-xl">
-          <div className="flex items-center justify-between mb-2 md:mb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">Pts</span>
-              <span className="text-lg font-black text-amber-400">{score}</span>
+          {/* Scoreboard to the right */}
+          <div className="w-48 md:w-64 flex flex-col bg-stone-800/90 rounded-lg border-2 border-stone-700 p-3 shadow-xl self-stretch">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">Pts</span>
+                <span className="text-lg font-black text-amber-400">{score}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setIsPaused(!isPaused)}
+                  disabled={isGameOver}
+                  className="px-2 py-1 rounded-md font-bold text-xs bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
+                >
+                  {isPaused ? 'Resume' : 'Pause'}
+                </button>
+                <button onClick={onExit} className="p-1 text-stone-400 hover:text-stone-200 transition-colors">
+                  <X size={16} />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setIsPaused(!isPaused)}
-                disabled={isGameOver}
-                className="px-2 py-1 rounded-md font-bold text-xs bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
-              >
-                {isPaused ? 'Resume' : 'Pause'}
-              </button>
-              <button onClick={onExit} className="p-1 text-stone-400 hover:text-stone-200 transition-colors">
-                <X size={16} />
-              </button>
-            </div>
-          </div>
           <div className="flex-1 overflow-y-auto space-y-1 md:space-y-2">
             {wordHistory.length === 0 ? (
               <div className="text-center text-stone-500 text-sm py-8">No words yet</div>
@@ -799,6 +781,23 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
               ))
             )}
           </div>
+        </div>
+        </div>
+
+        {/* Controls under the grid */}
+        <div className="flex gap-2 mt-2">
+          <button onClick={moveLeft} disabled={!fallingLetter || isGameOver || isPaused}
+            className="w-14 h-14 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
+            <ChevronLeft size={28} />
+          </button>
+          <button onClick={moveDown} disabled={!fallingLetter || isGameOver || isPaused}
+            className="w-14 h-14 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
+            <ChevronDown size={28} />
+          </button>
+          <button onClick={moveRight} disabled={!fallingLetter || isGameOver || isPaused}
+            className="w-14 h-14 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
+            <ChevronRight size={28} />
+          </button>
         </div>
       </main>
 

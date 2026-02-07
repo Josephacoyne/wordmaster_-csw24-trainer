@@ -35,7 +35,7 @@ const LEXTRIS_DICTIONARY = ['AA','AB','AD','AE','AG','AH','AI','AL','AM','AN','A
 const DICTIONARY_SET = new Set(LEXTRIS_DICTIONARY);
 
 const BASE_COLS = 3;
-const ROWS = 15;
+const ROWS = 13;
 const TOTAL_WORDS = LEXTRIS_DICTIONARY.length; // 127 words
 
 function makeEmptyGrid(cols: number): Cell[][] {

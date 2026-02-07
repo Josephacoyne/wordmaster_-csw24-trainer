@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, RotateCcw, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, X } from 'lucide-react';
 import { WordEntry } from '../types';
 import threeLetterHooksData from '../data/three-letter-hooks.json';
 import fourLetterHooksData from '../data/four-letter-hooks.json';
@@ -687,32 +687,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
 
   return (
     <div className="h-[100svh] w-full bg-gradient-to-br from-stone-900 via-stone-800 to-stone-900 text-white flex flex-col overflow-hidden">
-      <header className="shrink-0 bg-stone-950 border-b-2 border-stone-800 px-3 py-2 flex items-center justify-between" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-black text-amber-500">HOOK TRAINER</h1>
-          <div className="text-center">
-            <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider block">Points</span>
-            <span className="text-lg font-black text-amber-400">{score}</span>
-          </div>
-        </div>
-        <div className="flex gap-1">
-          <button
-            onClick={() => setIsPaused(!isPaused)}
-            disabled={isGameOver}
-            className="px-3 py-1.5 rounded-lg font-bold text-sm bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
-          >
-            {isPaused ? 'Resume' : 'Pause'}
-          </button>
-          <button onClick={resetGame} className="p-1.5 text-stone-400 hover:text-stone-200 transition-colors">
-            <RotateCcw size={18} />
-          </button>
-          <button onClick={onExit} className="p-1.5 text-stone-400 hover:text-stone-200 transition-colors">
-            <X size={18} />
-          </button>
-        </div>
-      </header>
-
-      <main className="flex-1 flex flex-col md:flex-row items-center md:items-end justify-center gap-2 md:gap-8 p-2 md:p-4 overflow-hidden">
+      <main className="flex-1 flex flex-col md:flex-row items-center md:items-end justify-center gap-2 md:gap-8 p-2 md:p-4 overflow-hidden" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
         <div className="flex flex-col items-center gap-2">
           {/* Hook bonus indicator */}
           {hookBonusMessage && (
@@ -786,8 +761,23 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         </div>
 
         <div className="w-full md:w-64 max-h-40 md:max-h-none md:h-full flex flex-col bg-stone-800/90 rounded-lg border-2 border-stone-700 p-3 md:p-4 shadow-xl">
-          <div className="text-center mb-2 md:mb-4">
-            <h2 className="text-sm md:text-lg font-black text-stone-300 uppercase tracking-wider">Word History</h2>
+          <div className="flex items-center justify-between mb-2 md:mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">Pts</span>
+              <span className="text-lg font-black text-amber-400">{score}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setIsPaused(!isPaused)}
+                disabled={isGameOver}
+                className="px-2 py-1 rounded-md font-bold text-xs bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
+              >
+                {isPaused ? 'Resume' : 'Pause'}
+              </button>
+              <button onClick={onExit} className="p-1 text-stone-400 hover:text-stone-200 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto space-y-1 md:space-y-2">
             {wordHistory.length === 0 ? (

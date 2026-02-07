@@ -98,6 +98,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
   const [hookBonusMessage, setHookBonusMessage] = useState<string | null>(null);
 
   const idCounter = useRef(0);
+  const historyRef = useRef<HTMLDivElement>(null);
   const getNextId = () => ++idCounter.current;
 
   // Lookup definition: try fullDictionary first, then fall back to definition JSON files
@@ -629,6 +630,13 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
   // Every 10 points shaves 15ms off, floor at 250ms
   const gravitySpeed = Math.max(250, 500 - Math.floor(score / 10) * 15);
 
+  // Scroll word history to top when new words are added
+  useEffect(() => {
+    if (historyRef.current) {
+      historyRef.current.scrollTop = 0;
+    }
+  }, [wordHistory]);
+
   // Gravity loop
   useEffect(() => {
     if (!fallingLetter || isPaused || isGameOver) return;
@@ -742,8 +750,8 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
           </div>
 
           {/* Scoreboard to the right */}
-          <div className="w-48 md:w-64 flex flex-col bg-stone-800/90 rounded-lg border-2 border-stone-700 p-3 shadow-xl self-stretch">
-            <div className="flex items-center justify-between mb-2">
+          <div className="w-48 md:w-64 flex flex-col bg-stone-800/90 rounded-lg border-2 border-stone-700 p-3 shadow-xl self-stretch min-h-0">
+            <div className="flex items-center justify-between mb-2 shrink-0">
               <div className="flex items-center gap-2">
                 <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">Pts</span>
                 <span className="text-lg font-black text-amber-400">{score}</span>
@@ -752,16 +760,16 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
                 <button
                   onClick={() => setIsPaused(!isPaused)}
                   disabled={isGameOver}
-                  className="px-2 py-1 rounded-md font-bold text-xs bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-lg font-bold text-sm bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
                 >
                   {isPaused ? 'Resume' : 'Pause'}
                 </button>
-                <button onClick={onExit} className="p-1 text-stone-400 hover:text-stone-200 transition-colors">
-                  <X size={16} />
+                <button onClick={onExit} className="p-1.5 text-stone-400 hover:text-stone-200 transition-colors">
+                  <X size={18} />
                 </button>
               </div>
             </div>
-          <div className="flex-1 overflow-y-auto space-y-1 md:space-y-2">
+            <div ref={historyRef} className="flex-1 overflow-y-auto min-h-0 space-y-1 md:space-y-2">
             {wordHistory.length === 0 ? (
               <div className="text-center text-stone-500 text-sm py-8">No words yet</div>
             ) : (

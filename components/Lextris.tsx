@@ -718,7 +718,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         )}
 
         {/* Grid + Scoreboard side by side */}
-        <div className="flex items-end justify-center gap-4">
+        <div className="flex items-end justify-center gap-4 pl-4">
           {/* Grid column */}
           <div className="flex items-center justify-center" style={{ width: gridWrapperWidth }}>
           <div
@@ -791,9 +791,9 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
                   className={`px-2 md:px-3 py-1 md:py-2 rounded transition-all ${
                     index === 0 ? 'bg-amber-900/70 ring-2 ring-amber-600' : 'bg-stone-700/40'
                   }`}>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
                     <span className="font-black text-stone-100 text-sm md:text-lg">{entry.word}</span>
-                    <span className="font-black text-amber-400 text-sm md:text-lg">+{entry.points}</span>
+                    <span className="font-black text-amber-400 text-xs md:text-sm">+{entry.points}</span>
                   </div>
                   {entry.definition && (
                     <div className="text-xs text-stone-400 mt-0.5 leading-tight">{entry.definition}</div>

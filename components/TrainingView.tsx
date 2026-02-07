@@ -1,29 +1,28 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { WordEntry, Difficulty } from '../types';
-import { ArrowLeft, Grid, Delete, FastForward } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { WordEntry } from '../types';
+import { ArrowLeft, Delete, FastForward } from 'lucide-react';
 
 interface TrainingViewProps {
   pool: WordEntry[];
   initialIndex: number;
   currentLetter: string;
-  difficulty: Difficulty;
   fullDictionary: WordEntry[];
   onSuccess: (word: WordEntry) => void;
-  onFail: (word: WordEntry) => void;
-  onComplete: (failures: WordEntry[]) => void;
+  onComplete: (totalErrors: number) => void;
   onSkipToLetter: (letter: string) => void;
   onExit: () => void;
+  onScoreUpdate?: (correct: number, incorrect: number) => void;
 }
 
-const LetterButton = ({ k, highlightedKeys, onPress }: { k: string, highlightedKeys: Set<string>, onPress: (k: string) => void }) => {
+const LetterButton: React.FC<{ k: string, highlightedKeys: Set<string>, onPress: (k: string) => void }> = ({ k, highlightedKeys, onPress }) => {
   const isPossible = highlightedKeys.has(k);
   return (
     <button
       onClick={() => onPress(k)}
       onContextMenu={(e) => e.preventDefault()}
       className={`aspect-[3/4] rounded-lg font-bold text-xl transition-all flex items-center justify-center select-none touch-manipulation shadow-sm active:scale-95 active:shadow-inner ${
-         isPossible 
-           ? 'bg-yellow-100 border-2 border-yellow-300 text-yellow-800 hover:bg-yellow-200' 
+         isPossible
+           ? 'bg-yellow-100 border-2 border-yellow-300 text-yellow-800 hover:bg-yellow-200'
            : 'bg-white border-2 border-slate-200 text-slate-700 hover:bg-slate-50 active:bg-slate-100'
       }`}
     >
@@ -32,42 +31,92 @@ const LetterButton = ({ k, highlightedKeys, onPress }: { k: string, highlightedK
   );
 };
 
-const TrainingView: React.FC<TrainingViewProps> = ({ 
-  pool, 
+// Group words by their prefix (all chars except last)
+function groupByPrefix(words: WordEntry[]): WordEntry[][] {
+  const groups: Record<string, WordEntry[]> = {};
+  const order: string[] = [];
+  words.forEach(w => {
+    const prefix = w.w.substring(0, w.w.length - 1);
+    if (!groups[prefix]) {
+      groups[prefix] = [];
+      order.push(prefix);
+    }
+    groups[prefix].push(w);
+  });
+  return order.map(p => groups[p]);
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+const TrainingView: React.FC<TrainingViewProps> = ({
+  pool,
   initialIndex,
   currentLetter,
-  difficulty,
   fullDictionary,
   onSuccess,
-  onFail,
   onComplete,
   onSkipToLetter,
-  onExit
+  onExit,
+  onScoreUpdate
 }) => {
+  const [phase, setPhase] = useState<'TRAIN' | 'TEST'>('TRAIN');
   const [inputValue, setInputValue] = useState('');
-  const [feedback, setFeedback] = useState<{ msg: string; type: 'neutral' | 'success' | 'error' | 'warning' }>({ msg: 'Type the missing letters', type: 'neutral' });
+  const [feedback, setFeedback] = useState<{ msg: string; type: 'neutral' | 'success' | 'error' | 'warning' }>({ msg: 'Type the missing letter', type: 'neutral' });
   const [showLetterSkip, setShowLetterSkip] = useState(false);
-  
-  // Use internal index to visually handle updates, but trust props for initial load
-  const [internalIndex, setInternalIndex] = useState(initialIndex);
 
-  // Sync when initialIndex changes (e.g. from restore or Hard reset)
+  // Score tallies (running across all test attempts)
+  const [correct, setCorrect] = useState(0);
+  const [incorrect, setIncorrect] = useState(0);
+
+  // Errors in current test batch (resets each test attempt)
+  const [testErrors, setTestErrors] = useState(0);
+
+  // Split pool into prefix-based batches (e.g. AA_, AB_, AC_...)
+  const batches = useMemo(() => groupByPrefix(pool), [pool]);
+
+  // Track which batch we're on, and position within it
+  const [batchIndex, setBatchIndex] = useState(0);
+  const [internalIndex, setInternalIndex] = useState(0);
+
+  // The active word list for the current phase (alphabetical for TRAIN, shuffled for TEST)
+  const [activeList, setActiveList] = useState<WordEntry[]>([]);
+
+  // Initialize / sync when pool changes
   useEffect(() => {
-    setInternalIndex(initialIndex);
+    setBatchIndex(0);
+    setInternalIndex(0);
+    setPhase('TRAIN');
+    setTestErrors(0);
     setInputValue('');
-    setFeedback({ msg: 'Type the missing letters', type: 'neutral' });
-  }, [initialIndex]);
+    setFeedback({ msg: 'Type the missing letter', type: 'neutral' });
+    if (batches.length > 0) {
+      setActiveList(batches[0]);
+    }
+  }, [pool]); // batches is derived from pool
 
-  const currentWord = pool[internalIndex];
+  // Keep activeList in sync when batchIndex changes
+  useEffect(() => {
+    if (batches.length > 0 && batchIndex < batches.length) {
+      setActiveList(batches[batchIndex]);
+    }
+  }, [batchIndex, batches]);
 
-  // Masking
-  // Hard Mode 2L: Keep as is (guess 2 letters). Hard Mode 3L/4L: Guess 1 letter (like Medium).
-  const lettersToGuess = (difficulty === 'HARD' && currentWord?.w.length === 2) ? 2 : 1;
-  const prefixLength = currentWord ? Math.max(0, currentWord.w.length - lettersToGuess) : 0;
-  const prefix = currentWord ? currentWord.w.substring(0, prefixLength) : '';
+  const currentWord = activeList[internalIndex];
+  const currentPrefix = currentWord ? currentWord.w.substring(0, currentWord.w.length - 1) : '';
+
+  // Always guess 1 letter
+  const prefixLength = currentWord ? currentWord.w.length - 1 : 0;
+  const prefix = currentPrefix;
   const targetSuffix = currentWord ? currentWord.w.substring(prefixLength) : '';
 
-  // Validation Logic
+  // Valid alternatives for this prefix
   const validAlternatives = useMemo(() => {
     if (!currentWord) return new Set<string>();
     return new Set(
@@ -77,9 +126,9 @@ const TrainingView: React.FC<TrainingViewProps> = ({
     );
   }, [currentWord, fullDictionary, prefix]);
 
-  // Highlights (Easy Mode)
+  // Highlights only in TRAIN phase
   const highlightedKeys = useMemo(() => {
-    if (difficulty !== 'EASY' || !currentWord) return new Set<string>();
+    if (phase !== 'TRAIN' || !currentWord) return new Set<string>();
     const validNextChars = new Set<string>();
     const currentInputLen = inputValue.length;
     validAlternatives.forEach(word => {
@@ -90,85 +139,118 @@ const TrainingView: React.FC<TrainingViewProps> = ({
         }
     });
     return validNextChars;
-  }, [difficulty, currentWord, inputValue, validAlternatives, prefixLength]);
+  }, [phase, currentWord, inputValue, validAlternatives, prefixLength]);
 
+  const startBatch = (idx: number, startPhase: 'TRAIN' | 'TEST' = 'TRAIN') => {
+    const batch = batches[idx];
+    if (!batch) return;
+    const list = startPhase === 'TEST' ? shuffle(batch) : batch;
+    setActiveList(list);
+    setBatchIndex(idx);
+    setInternalIndex(0);
+    setPhase(startPhase);
+    setTestErrors(0);
+    setInputValue('');
+    setFeedback({ msg: startPhase === 'TRAIN' ? 'Type the missing letter' : 'No hints!', type: 'neutral' });
+  };
+
+  const advanceToNext = () => {
+    if (internalIndex < activeList.length - 1) {
+      setInternalIndex(i => i + 1);
+      setInputValue('');
+      setFeedback({ msg: phase === 'TRAIN' ? 'Type the missing letter' : 'No hints!', type: 'neutral' });
+    } else {
+      // Completed all words in this batch for this phase
+      if (phase === 'TRAIN') {
+        // Switch to TEST for same batch — shuffled
+        const shuffled = shuffle(batches[batchIndex]);
+        setActiveList(shuffled);
+        setPhase('TEST');
+        setInternalIndex(0);
+        setTestErrors(0);
+        setInputValue('');
+        setFeedback({ msg: 'No hints!', type: 'neutral' });
+      } else {
+        // TEST passed for this batch — advance to next batch or complete
+        if (batchIndex < batches.length - 1) {
+          startBatch(batchIndex + 1, 'TRAIN');
+        } else {
+          // All batches done
+          onComplete(incorrect);
+        }
+      }
+    }
+  };
 
   const validateInput = (fullInput: string) => {
       const fullAttempt = prefix + fullInput;
-      
+
       if (fullAttempt === currentWord.w) {
         setFeedback({ msg: 'Correct!', type: 'success' });
+
+        if (phase === 'TEST') {
+          const newCorrect = correct + 1;
+          setCorrect(newCorrect);
+          onScoreUpdate?.(newCorrect, incorrect);
+          onSuccess(currentWord);
+        }
+
         setTimeout(() => {
-           onSuccess(currentWord);
-           // If we didn't just win the whole deck, move visually
-           if (internalIndex < pool.length - 1) {
-             setInternalIndex(i => i + 1);
-             setInputValue('');
-             setFeedback({ msg: 'Type the missing letters', type: 'neutral' });
-           }
+          advanceToNext();
         }, 600);
       } else {
         // INCORRECT
-        if (validAlternatives.has(fullAttempt)) {
-           // Valid word but wrong def
-           setFeedback({ msg: 'Valid word, but wrong definition!', type: 'warning' });
-           // In Easy/Medium, allow retry. In Hard, Strict fail.
-           if (difficulty === 'HARD') {
-             strictFail();
-           } else {
-             setTimeout(() => setInputValue(''), 1000);
-           }
+        if (phase === 'TRAIN') {
+          // Train: just retry, no penalty
+          if (validAlternatives.has(fullAttempt)) {
+            setFeedback({ msg: 'Valid word, but not this one!', type: 'warning' });
+          } else {
+            setFeedback({ msg: 'Try again', type: 'error' });
+          }
+          setTimeout(() => {
+            setInputValue('');
+            setFeedback({ msg: 'Type the missing letter', type: 'neutral' });
+          }, 800);
         } else {
-           // Invalid
-           setFeedback({ msg: difficulty === 'HARD' ? 'Perfect Score Needed! Resetting...' : 'Incorrect', type: 'error' });
-           if (difficulty === 'HARD') {
-             strictFail();
-           } else {
-             onFail(currentWord);
-             setTimeout(() => {
-               setInputValue('');
-               setFeedback({ msg: 'Try again', type: 'neutral' });
-             }, 800);
-           }
+          // TEST: increment errors
+          const newIncorrect = incorrect + 1;
+          const newTestErrors = testErrors + 1;
+          setIncorrect(newIncorrect);
+          setTestErrors(newTestErrors);
+          onScoreUpdate?.(correct, newIncorrect);
+
+          if (newTestErrors >= 3) {
+            // Back to training for same batch
+            setFeedback({ msg: 'Back to Training...', type: 'error' });
+            setTimeout(() => {
+              startBatch(batchIndex, 'TRAIN');
+            }, 1500);
+          } else {
+            if (validAlternatives.has(fullAttempt)) {
+              setFeedback({ msg: 'Valid word, but not this one!', type: 'warning' });
+            } else {
+              setFeedback({ msg: 'Incorrect', type: 'error' });
+            }
+            setTimeout(() => {
+              setInputValue('');
+              setFeedback({ msg: 'No hints!', type: 'neutral' });
+            }, 800);
+          }
         }
       }
   };
 
   const handleKeyPress = (key: string) => {
     if (!currentWord || feedback.type === 'success') return;
-    
-    // Check if we are already full length
     if (inputValue.length >= targetSuffix.length) return;
 
     const newVal = inputValue + key;
     setInputValue(newVal);
 
-    // Auto-validate ONLY if NOT Hard Mode
-    if (difficulty !== 'HARD' && newVal.length === targetSuffix.length) {
+    // Auto-validate when full length reached
+    if (newVal.length === targetSuffix.length) {
        validateInput(newVal);
     }
-  };
-
-  const handleEnter = () => {
-    if (inputValue.length === targetSuffix.length) {
-       validateInput(inputValue);
-    } else {
-       // Optional: Shake or warn if not enough letters?
-    }
-  };
-
-  const strictFail = () => {
-    // Show feedback briefly then trigger reset
-    setTimeout(() => {
-      // Hard Mode: RESET TO BEGINNING OF CATEGORY (Deck)
-      // This applies to 2L (Whole deck) and 3/4L (Current Letter Category)
-      onFail(currentWord); 
-      
-      // Force local reset immediately
-      setInternalIndex(0);
-      setInputValue('');
-      setFeedback({ msg: 'Type the missing letters', type: 'neutral' });
-    }, 1500);
   };
 
   const handleDelete = () => {
@@ -184,11 +266,22 @@ const TrainingView: React.FC<TrainingViewProps> = ({
            <ArrowLeft size={24} />
          </button>
          <div className="flex flex-col items-center">
-            <span className="text-sm font-bold text-slate-400 uppercase tracking-wide">TRAINING {currentLetter}</span>
-            <span className="text-lg font-black text-indigo-600">{internalIndex + 1} / {pool.length}</span>
+            <span className={`text-sm font-bold uppercase tracking-wide ${
+              phase === 'TEST' ? 'text-amber-500' : 'text-slate-400'
+            }`}>
+              {phase === 'TRAIN' ? 'TRAIN' : 'TEST'} {prefix}
+            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-lg font-black text-indigo-600">{internalIndex + 1} / {activeList.length}</span>
+              <span className="text-xs font-bold">
+                <span className="text-emerald-500">✓ {correct}</span>
+                {' '}
+                <span className="text-rose-400">✗ {incorrect}</span>
+              </span>
+            </div>
          </div>
-         <button 
-           onClick={() => setShowLetterSkip(true)} 
+         <button
+           onClick={() => setShowLetterSkip(true)}
            className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg flex items-center gap-1 font-bold text-sm hover:bg-indigo-100 active:scale-95 transition-all"
          >
            <span>SKIP</span>
@@ -198,19 +291,23 @@ const TrainingView: React.FC<TrainingViewProps> = ({
 
       <div className="flex-1 flex flex-col items-center justify-center p-2 min-h-0">
          <div className="bg-white rounded-[1.5rem] p-3 shadow-xl w-full max-w-xs relative overflow-hidden border-2 border-slate-100 flex flex-col items-center justify-center max-h-full">
+            {phase === 'TEST' && (
+              <div className="absolute top-3 bg-amber-100 text-amber-600 font-black text-[9px] tracking-widest uppercase px-2 py-0.5 rounded-full">
+                TEST MODE
+              </div>
+            )}
+
             <div className="text-center mb-4 mt-2 min-h-[3rem] flex items-center justify-center max-h-[35%] overflow-y-auto no-scrollbar">
                <p className="text-xl font-medium text-slate-700 leading-snug px-2">{currentWord.d}</p>
             </div>
 
             <div className="flex justify-center gap-1 mb-4 shrink-0">
-               {/* Prefix as Single Dark Block (Master Hook Style) */}
                {prefix.length > 0 && (
                  <div className="h-16 px-4 bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-black text-white select-none shadow-md">
                    {prefix}
                  </div>
                )}
-               
-               {/* Input as Bordered Blocks (Hook Style) */}
+
                {targetSuffix.split('').map((_, i) => (
                   <div key={`i-${i}`} className={`w-12 h-16 border-b-4 rounded-xl flex items-center justify-center text-4xl font-black transition-colors ${
                      feedback.type === 'error' ? 'border-rose-400 text-rose-500 bg-rose-50' :
@@ -233,62 +330,33 @@ const TrainingView: React.FC<TrainingViewProps> = ({
          </div>
       </div>
 
-      {/* Keyboard with Easy Mode Highlights */}
+      {/* Keyboard */}
       <div className="bg-white p-2 pb-4 border-t border-slate-100 shrink-0">
         <div className="max-w-md mx-auto grid grid-cols-7 gap-1">
-          {/* Row 1: A-G */}
           {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(k => (
              <LetterButton key={k} k={k} highlightedKeys={highlightedKeys} onPress={handleKeyPress} />
           ))}
-
-          {/* Row 2: H-N */}
           {['H', 'I', 'J', 'K', 'L', 'M', 'N'].map(k => (
              <LetterButton key={k} k={k} highlightedKeys={highlightedKeys} onPress={handleKeyPress} />
           ))}
-
-          {/* Row 3: O-U */}
           {['O', 'P', 'Q', 'R', 'S', 'T', 'U'].map(k => (
              <LetterButton key={k} k={k} highlightedKeys={highlightedKeys} onPress={handleKeyPress} />
           ))}
-
-          {/* Row 4: V-Z + DEL + ENTER */}
           {['V', 'W', 'X', 'Y', 'Z'].map(k => (
              <LetterButton key={k} k={k} highlightedKeys={highlightedKeys} onPress={handleKeyPress} />
           ))}
 
-          {/* DELETE BUTTON (Column 6 of Row 4) */}
-          <button 
+          <button
              onClick={handleDelete}
-             className={`rounded-lg bg-slate-100 border border-slate-200 text-slate-500 font-black text-xs hover:bg-slate-200 active:scale-95 flex flex-col items-center justify-center transition-all ${
-               difficulty !== 'HARD' ? 'col-span-2 aspect-auto' : 'aspect-[3/4]'
-             }`}
+             className="col-span-2 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 font-black text-xs hover:bg-slate-200 active:scale-95 flex flex-col items-center justify-center transition-all aspect-auto"
              aria-label="Delete"
            >
              <Delete size={20} />
              <span className="text-[10px] mt-0.5">DEL</span>
            </button>
-
-           {/* ENTER BUTTON (Column 7 of Row 4 - Only in Hard Mode) */}
-           {difficulty === 'HARD' && (
-               <button 
-                 onClick={handleEnter}
-                 disabled={inputValue.length !== targetSuffix.length}
-                 className={`aspect-[3/4] rounded-lg border font-black text-xs flex flex-col items-center justify-center transition-all ${
-                    inputValue.length === targetSuffix.length 
-                      ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-md shadow-indigo-200' 
-                      : 'bg-slate-50 border-slate-200 text-slate-300'
-                 }`}
-                 aria-label="Enter"
-               >
-                 <div className="w-5 h-5 flex items-center justify-center border-2 border-current rounded-md mb-0.5">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 10 4 15 9 20"></polyline><path d="M20 4v7a4 4 0 0 1-4 4H4"></path></svg>
-                 </div>
-                 <span className="text-[10px]">ENT</span>
-               </button>
-           )}
         </div>
       </div>
-      
+
       {/* Skip Menu Overlay */}
       {showLetterSkip && (
         <div className="fixed inset-0 bg-slate-100 z-50 p-3 flex flex-col">
@@ -300,9 +368,9 @@ const TrainingView: React.FC<TrainingViewProps> = ({
             </div>
             <div className="grid grid-cols-8 gap-1.5 overflow-y-auto pb-4">
                 {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('').map(L => (
-                    <button 
-                      key={L} 
-                      onClick={() => { onSkipToLetter(L); setShowLetterSkip(false); }} 
+                    <button
+                      key={L}
+                      onClick={() => { onSkipToLetter(L); setShowLetterSkip(false); }}
                       className="aspect-square bg-white rounded-lg shadow-sm border-2 border-slate-200 font-black text-sm text-slate-700 hover:border-indigo-600 active:scale-95 transition-all"
                     >
                       {L}

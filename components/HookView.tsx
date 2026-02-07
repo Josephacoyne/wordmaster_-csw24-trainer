@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { HookData } from '../types';
-import { ArrowLeft, Delete, Info, CheckCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle } from 'lucide-react';
 
 interface HookViewProps {
   data: HookData;
@@ -8,6 +8,8 @@ interface HookViewProps {
   totalCount: number;
   onMastery: () => void;
   onExit: () => void;
+  onScoreUpdate?: (correct: number, incorrect: number) => void;
+  onAllComplete?: (totalErrors: number) => void;
 }
 
 type HookQuestion = {
@@ -16,14 +18,23 @@ type HookQuestion = {
   definition: string;
 };
 
-const LetterButton = ({ k, isHighlighted, onPress }: { k: string, isHighlighted: boolean, onPress: (k: string) => void }) => {
+function shuffle<T>(arr: T[]): T[] {
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+const LetterButton: React.FC<{ k: string, isHighlighted: boolean, onPress: (k: string) => void }> = ({ k, isHighlighted, onPress }) => {
   return (
     <button
       onClick={() => onPress(k)}
       onContextMenu={(e) => e.preventDefault()}
       className={`aspect-[3/4] rounded-lg font-bold text-xl transition-all flex items-center justify-center select-none touch-manipulation shadow-sm active:scale-95 active:shadow-inner ${
-         isHighlighted 
-           ? 'bg-indigo-100 border-2 border-indigo-400 text-indigo-900 hover:bg-indigo-200' 
+         isHighlighted
+           ? 'bg-indigo-100 border-2 border-indigo-400 text-indigo-900 hover:bg-indigo-200'
            : 'bg-white border-2 border-slate-200 text-slate-700 hover:bg-slate-50 active:bg-slate-100'
       }`}
     >
@@ -32,121 +43,167 @@ const LetterButton = ({ k, isHighlighted, onPress }: { k: string, isHighlighted:
   );
 };
 
-const HookView: React.FC<HookViewProps> = ({ 
-  data, 
+// Stages: Learn Front → Test Front → Learn Back → Test Back
+type Stage = 'LEARN_FRONT' | 'TEST_FRONT' | 'LEARN_BACK' | 'TEST_BACK';
+
+const HookView: React.FC<HookViewProps> = ({
+  data,
   currentIndex,
   totalCount,
   onMastery,
-  onExit
+  onExit,
+  onScoreUpdate,
+  onAllComplete
 }) => {
-  const [phase, setPhase] = useState<'LEARN' | 'TEST'>('LEARN');
-  const [showIntroModal, setShowIntroModal] = useState(false);
+  const [stage, setStage] = useState<Stage>('LEARN_FRONT');
   const [qIndex, setQIndex] = useState(0);
   const [feedback, setFeedback] = useState<{ msg: string; type: 'neutral' | 'success' | 'error' | 'warning' }>({ msg: '', type: 'neutral' });
-  const [selectedChar, setSelectedChar] = useState<string | null>(null);
-  const [mistakesInCurrentRun, setMistakesInCurrentRun] = useState(false);
 
-  // Logic: Flatten hooks
-  const questions = useMemo<HookQuestion[]>(() => {
+  // Score tallies
+  const [correct, setCorrect] = useState(0);
+  const [incorrect, setIncorrect] = useState(0);
+  const [testErrors, setTestErrors] = useState(0);
+
+  // Build sorted question lists for front and back hooks
+  const frontQuestions = useMemo<HookQuestion[]>(() => {
     if (!data) return [];
-    const q: HookQuestion[] = [];
-    data.frontHooks.forEach(h => q.push({ type: 'FRONT', char: h.char, definition: h.definition }));
-    data.backHooks.forEach(h => q.push({ type: 'BACK', char: h.char, definition: h.definition }));
-    return q;
+    return data.frontHooks
+      .map(h => ({ type: 'FRONT' as const, char: h.char, definition: h.definition }))
+      .sort((a, b) => a.char.localeCompare(b.char));
   }, [data]);
 
-  const currentQ = questions[qIndex];
+  const backQuestions = useMemo<HookQuestion[]>(() => {
+    if (!data) return [];
+    return data.backHooks
+      .map(h => ({ type: 'BACK' as const, char: h.char, definition: h.definition }))
+      .sort((a, b) => a.char.localeCompare(b.char));
+  }, [data]);
 
-  // Logic: Calculate ALL valid hooks for the current side (for Highlighting in Learn phase)
+  // Active list changes per stage (alphabetical for learn, shuffled for test)
+  const [activeList, setActiveList] = useState<HookQuestion[]>([]);
+
+  const isLearnStage = stage === 'LEARN_FRONT' || stage === 'LEARN_BACK';
+  const isFrontStage = stage === 'LEARN_FRONT' || stage === 'TEST_FRONT';
+
+  // Valid hooks for the current side (for highlighting in Learn stages)
   const validForCurrentSide = useMemo(() => {
-    if (!currentQ || !data) return new Set<string>();
-    const source = currentQ.type === 'FRONT' ? data.frontHooks : data.backHooks;
+    if (!data) return new Set<string>();
+    const source = isFrontStage ? data.frontHooks : data.backHooks;
     return new Set(source.map(h => h.char));
-  }, [currentQ, data]);
+  }, [data, isFrontStage]);
 
-  // Reset state when data changes (new word)
+  // Reset when data changes (new word)
   useEffect(() => {
     setQIndex(0);
-    setPhase('LEARN');
+    setTestErrors(0);
     setFeedback({ msg: '', type: 'neutral' });
-    setSelectedChar(null);
-    setMistakesInCurrentRun(false);
-  }, [data]);
+
+    if (frontQuestions.length > 0) {
+      setStage('LEARN_FRONT');
+      setActiveList(frontQuestions);
+    } else if (backQuestions.length > 0) {
+      setStage('LEARN_BACK');
+      setActiveList(backQuestions);
+    }
+  }, [data]); // frontQuestions/backQuestions derived from data
+
+  const currentQ = activeList[qIndex];
+
+  const startStage = (newStage: Stage) => {
+    let list: HookQuestion[] = [];
+    switch (newStage) {
+      case 'LEARN_FRONT': list = frontQuestions; break;
+      case 'TEST_FRONT': list = shuffle(frontQuestions); break;
+      case 'LEARN_BACK': list = backQuestions; break;
+      case 'TEST_BACK': list = shuffle(backQuestions); break;
+    }
+    setActiveList(list);
+    setStage(newStage);
+    setQIndex(0);
+    setTestErrors(0);
+
+    const isLearn = newStage === 'LEARN_FRONT' || newStage === 'LEARN_BACK';
+    const side = newStage.includes('FRONT') ? 'Front' : 'Back';
+    setFeedback({
+      msg: isLearn ? `Learn ${side} Hooks` : `Test ${side} Hooks — No hints!`,
+      type: 'neutral'
+    });
+  };
+
+  const getNextStage = (): Stage | 'DONE' => {
+    switch (stage) {
+      case 'LEARN_FRONT': return 'TEST_FRONT';
+      case 'TEST_FRONT':
+        return backQuestions.length > 0 ? 'LEARN_BACK' : 'DONE';
+      case 'LEARN_BACK': return 'TEST_BACK';
+      case 'TEST_BACK': return 'DONE';
+    }
+  };
+
+  // Which learn stage to reset to on 3 errors
+  const getLearnStageForCurrentTest = (): Stage => {
+    return stage === 'TEST_FRONT' ? 'LEARN_FRONT' : 'LEARN_BACK';
+  };
 
   const handlePress = (char: string) => {
     if (!currentQ || feedback.type === 'success') return;
 
-    // Check correctness
     if (char === currentQ.char) {
-      // Correct!
       setFeedback({ msg: 'Correct!', type: 'success' });
+
+      if (!isLearnStage) {
+        const newCorrect = correct + 1;
+        setCorrect(newCorrect);
+        onScoreUpdate?.(newCorrect, incorrect);
+      }
+
       setTimeout(() => {
         advance();
       }, 400);
     } else {
-      // Wrong
-      if (phase === 'TEST') {
-         setMistakesInCurrentRun(true);
-         setFeedback({ msg: 'Incorrect', type: 'error' });
+      if (!isLearnStage) {
+        const newIncorrect = incorrect + 1;
+        const newTestErrors = testErrors + 1;
+        setIncorrect(newIncorrect);
+        setTestErrors(newTestErrors);
+        onScoreUpdate?.(correct, newIncorrect);
+
+        if (newTestErrors >= 3) {
+          setFeedback({ msg: 'Back to Learning...', type: 'error' });
+          setTimeout(() => {
+            startStage(getLearnStageForCurrentTest());
+          }, 1500);
+          return;
+        }
+
+        setFeedback({ msg: 'Incorrect', type: 'error' });
       } else {
-         // Learn phase: just visual feedback, no penalty
-         setFeedback({ msg: 'Try again', type: 'warning' });
+        setFeedback({ msg: 'Try again', type: 'warning' });
       }
-      
-      // Clear feedback quickly
+
       setTimeout(() => {
-          if (feedback.type !== 'success') {
-             setFeedback({ msg: '', type: 'neutral' });
-          }
+          setFeedback({ msg: '', type: 'neutral' });
       }, 600);
     }
   };
 
   const advance = () => {
     setFeedback({ msg: '', type: 'neutral' });
-    setSelectedChar(null);
-    
-    if (qIndex < questions.length - 1) {
+
+    if (qIndex < activeList.length - 1) {
       setQIndex(prev => prev + 1);
     } else {
-      // End of questions for this phase
-      if (phase === 'LEARN') {
-         // Transition to TEST
-         if (currentIndex === 0) {
-             setShowIntroModal(true); // Barrier for first word only
-         } else {
-             startTest();
-         }
+      // End of current stage
+      const next = getNextStage();
+      if (next === 'DONE') {
+        if (currentIndex >= totalCount - 1) {
+          onAllComplete?.(incorrect);
+        }
+        onMastery();
       } else {
-         // TEST Phase Complete
-         if (mistakesInCurrentRun) {
-             // Failed Test
-             setFeedback({ msg: 'Mistakes made. Back to Learning...', type: 'error' });
-             setTimeout(() => {
-                 startLearn(); // Go back to Learn Phase
-             }, 1500);
-         } else {
-             // Passed Test!
-             onMastery();
-         }
+        startStage(next);
       }
     }
-  };
-
-  const startLearn = () => {
-      setPhase('LEARN');
-      setQIndex(0);
-      setMistakesInCurrentRun(false);
-      setFeedback({ msg: 'Learning Phase', type: 'neutral' });
-      setShowIntroModal(false);
-  };
-
-  const startTest = () => {
-      setPhase('TEST');
-      setQIndex(0);
-      setMistakesInCurrentRun(false);
-      setFeedback({ msg: 'Test Phase', type: 'neutral' });
-      setShowIntroModal(false);
   };
 
   // Completion Check (End of Deck)
@@ -169,44 +226,41 @@ const HookView: React.FC<HookViewProps> = ({
       );
   }
 
-  if (!currentQ && questions.length > 0) return <div>Loading...</div>;
-  if (questions.length === 0 && data) { setTimeout(onMastery, 100); return <div>No Hooks</div>; }
+  if (!currentQ && activeList.length > 0) return <div>Loading...</div>;
+  if (activeList.length === 0 && data) {
+    // No hooks at all for this word — skip
+    if (frontQuestions.length === 0 && backQuestions.length === 0) {
+      setTimeout(onMastery, 100);
+      return <div>No Hooks</div>;
+    }
+    return <div>Loading...</div>;
+  }
+
+  const stageLabel = isLearnStage
+    ? `Learn ${isFrontStage ? 'Front' : 'Back'} Hooks`
+    : `Test ${isFrontStage ? 'Front' : 'Back'} Hooks`;
 
   return (
     <div className="fixed inset-0 flex flex-col h-[100svh] w-full bg-slate-50 overflow-hidden">
-       {/* Intro Modal for Test Phase */}
-       {showIntroModal && (
-           <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-               <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-xs text-center w-full">
-                   <div className="w-16 h-16 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                       <Info size={32} />
-                   </div>
-                   <h3 className="text-xl font-black text-slate-800 mb-2">Pass The Test To Progress</h3>
-                   <p className="text-slate-500 mb-6 text-sm leading-relaxed">
-                       You've learned the hooks. Now prove you know them without hints. 
-                       <br/><br/>
-                       <span className="font-bold text-rose-500">One mistake and you return to learning!</span>
-                   </p>
-                   <button 
-                     onClick={startTest}
-                     className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all"
-                   >
-                       I'm Ready
-                   </button>
-               </div>
-           </div>
-       )}
-
        {/* Header */}
        <div className="flex items-center justify-between p-3 bg-white shadow-sm z-10 shrink-0 h-16">
          <button onClick={onExit} className="p-2 text-slate-400 hover:text-slate-600">
            <ArrowLeft size={24} />
          </button>
          <div className="flex flex-col items-center">
-           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-               {phase === 'LEARN' ? 'Learning Phase' : 'Test Phase'}
+           <span className={`text-[10px] font-black uppercase tracking-widest ${
+             !isLearnStage ? 'text-amber-500' : 'text-slate-400'
+           }`}>
+               {stageLabel}
            </span>
-           <span className="text-lg font-black text-indigo-600">{currentIndex + 1} / {totalCount}</span>
+           <div className="flex items-center gap-3">
+             <span className="text-lg font-black text-indigo-600">{currentIndex + 1} / {totalCount}</span>
+             <span className="text-xs font-bold">
+               <span className="text-emerald-500">✓ {correct}</span>
+               {' '}
+               <span className="text-rose-400">✗ {incorrect}</span>
+             </span>
+           </div>
          </div>
          <div className="w-12" />
        </div>
@@ -214,11 +268,11 @@ const HookView: React.FC<HookViewProps> = ({
        {/* Game Area */}
        <div className="flex-1 flex flex-col items-center justify-center p-2 min-h-0">
           <div className={`bg-white rounded-[1.5rem] p-3 shadow-xl w-full max-w-xs relative overflow-hidden border-2 flex flex-col items-center justify-center max-h-full transition-colors duration-500 ${
-              phase === 'TEST' ? 'border-amber-100 shadow-amber-100/50' : 'border-slate-100'
+              !isLearnStage ? 'border-amber-100 shadow-amber-100/50' : 'border-slate-100'
           }`}>
-             
+
              <div className={`absolute top-3 font-black text-[9px] tracking-widest uppercase px-2 py-0.5 rounded-full ${
-                 phase === 'TEST' ? 'bg-amber-100 text-amber-600' : 'bg-indigo-50 text-indigo-400'
+                 !isLearnStage ? 'bg-amber-100 text-amber-600' : 'bg-indigo-50 text-indigo-400'
              }`}>
                 {currentQ.type} HOOK
              </div>
@@ -240,33 +294,33 @@ const HookView: React.FC<HookViewProps> = ({
              <div className="flex items-center justify-center gap-1 mb-3 shrink-0">
                 {currentQ.type === 'FRONT' && (
                   <div className={`w-12 h-16 rounded-xl border-b-4 flex items-center justify-center text-4xl font-black transition-all ${
-                     feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 
-                     feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
+                     feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' :
+                     feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' :
                      'border-indigo-100 text-indigo-400 bg-indigo-50'
                   }`}>
                      {feedback.type === 'success' ? currentQ.char : '?'}
                   </div>
                 )}
-                
+
                 <div className="h-16 px-4 bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-black text-white shadow-lg tracking-widest">
                    {data.word.w}
                 </div>
 
                 {currentQ.type === 'BACK' && (
                   <div className={`w-12 h-16 rounded-xl border-b-4 flex items-center justify-center text-4xl font-black transition-all ${
-                     feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 
-                     feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' : 
+                     feedback.type === 'success' ? 'border-emerald-500 text-emerald-600 bg-emerald-50' :
+                     feedback.type === 'error' ? 'border-rose-500 text-rose-600 bg-rose-50' :
                      'border-indigo-100 text-indigo-400 bg-indigo-50'
                   }`}>
                      {feedback.type === 'success' ? currentQ.char : '?'}
                   </div>
                 )}
              </div>
-             
+
              <div className="w-full bg-slate-100 h-1.5 rounded-full mt-1 overflow-hidden shrink-0">
-                <div 
-                    className={`h-full transition-all duration-300 ${phase === 'TEST' ? 'bg-amber-500' : 'bg-indigo-500'}`} 
-                    style={{ width: `${((qIndex) / questions.length) * 100}%` }} 
+                <div
+                    className={`h-full transition-all duration-300 ${!isLearnStage ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                    style={{ width: `${((qIndex) / activeList.length) * 100}%` }}
                 />
              </div>
           </div>
@@ -276,16 +330,16 @@ const HookView: React.FC<HookViewProps> = ({
        <div className="bg-white p-2 pb-4 border-t border-slate-100 shrink-0">
         <div className="max-w-md mx-auto grid grid-cols-7 gap-1">
            {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(k => (
-              <LetterButton key={k} k={k} isHighlighted={phase === 'LEARN' && validForCurrentSide.has(k)} onPress={handlePress} />
+              <LetterButton key={k} k={k} isHighlighted={isLearnStage && validForCurrentSide.has(k)} onPress={handlePress} />
            ))}
            {['H', 'I', 'J', 'K', 'L', 'M', 'N'].map(k => (
-              <LetterButton key={k} k={k} isHighlighted={phase === 'LEARN' && validForCurrentSide.has(k)} onPress={handlePress} />
+              <LetterButton key={k} k={k} isHighlighted={isLearnStage && validForCurrentSide.has(k)} onPress={handlePress} />
            ))}
            {['O', 'P', 'Q', 'R', 'S', 'T', 'U'].map(k => (
-              <LetterButton key={k} k={k} isHighlighted={phase === 'LEARN' && validForCurrentSide.has(k)} onPress={handlePress} />
+              <LetterButton key={k} k={k} isHighlighted={isLearnStage && validForCurrentSide.has(k)} onPress={handlePress} />
            ))}
            {['V', 'W', 'X', 'Y', 'Z'].map(k => (
-              <LetterButton key={k} k={k} isHighlighted={phase === 'LEARN' && validForCurrentSide.has(k)} onPress={handlePress} />
+              <LetterButton key={k} k={k} isHighlighted={isLearnStage && validForCurrentSide.has(k)} onPress={handlePress} />
            ))}
         </div>
       </div>

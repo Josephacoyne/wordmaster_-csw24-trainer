@@ -25,21 +25,11 @@ export enum AppMode {
 }
 
 export type WordLength = 2 | 3 | 4 | 'ALL';
-export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD';
+export type Medal = 'gold' | 'silver' | 'bronze';
 
 // Challenge Types
-export type ChallengeOrder = 'RANDOM' | 'ALPHA';
-
 export interface ChallengeItem {
   word: string;
   isReal: boolean;
   data?: WordEntry;
-}
-
-export interface ChallengeSnapshot {
-  deck: ChallengeItem[];
-  index: number;
-  streak: number;
-  targetLength: WordLength | null;
-  order: ChallengeOrder;
 }

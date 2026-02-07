@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { WordEntry } from '../types';
 import threeLetterHooksData from '../data/three-letter-hooks.json';
 import fourLetterHooksData from '../data/four-letter-hooks.json';
@@ -98,7 +98,8 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
   const [hookBonusMessage, setHookBonusMessage] = useState<string | null>(null);
 
   const idCounter = useRef(0);
-  const historyRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [gridHeight, setGridHeight] = useState<number | null>(null);
   const getNextId = () => ++idCounter.current;
 
   // Lookup definition: try fullDictionary first, then fall back to definition JSON files
@@ -630,12 +631,18 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
   // Every 10 points shaves 15ms off, floor at 250ms
   const gravitySpeed = Math.max(250, 500 - Math.floor(score / 10) * 15);
 
-  // Scroll word history to top when new words are added
+  // Measure grid height to size scoreboard
   useEffect(() => {
-    if (historyRef.current) {
-      historyRef.current.scrollTop = 0;
+    if (gridRef.current) {
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          setGridHeight(entry.contentRect.height);
+        }
+      });
+      observer.observe(gridRef.current);
+      return () => observer.disconnect();
     }
-  }, [wordHistory]);
+  }, []);
 
   // Gravity loop
   useEffect(() => {
@@ -695,7 +702,14 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
 
   return (
     <div className="h-[100svh] w-full bg-gradient-to-br from-stone-900 via-stone-800 to-stone-900 text-white flex flex-col overflow-hidden">
-      <main className="flex-1 flex flex-col items-center justify-end p-2 md:p-4 overflow-hidden" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
+      {/* BACK button */}
+      <div className="shrink-0 px-3 pt-2" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
+        <button onClick={onExit} className="px-4 py-1.5 rounded-lg font-bold text-sm bg-stone-700 hover:bg-stone-600 text-stone-300 transition-all">
+          BACK
+        </button>
+      </div>
+
+      <main className="flex-1 flex flex-col items-center justify-end p-2 md:p-4 overflow-hidden">
         {/* Hook bonus indicator */}
         {hookBonusMessage && (
           <div className="px-4 py-2 mb-2 bg-amber-600/90 rounded-lg text-stone-900 font-black text-sm animate-pulse">
@@ -708,6 +722,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
           {/* Grid column */}
           <div className="flex items-center justify-center" style={{ width: gridWrapperWidth }}>
           <div
+            ref={gridRef}
             className="grid gap-[2px] bg-stone-800 p-2 rounded-lg shadow-2xl border-2 border-stone-700 transition-all duration-300"
             style={{
               gridTemplateColumns: `repeat(${activeCols}, ${cellSize})`,
@@ -750,30 +765,28 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
           </div>
 
           {/* Scoreboard to the right */}
-          <div className="w-48 md:w-64 flex flex-col bg-stone-800/90 rounded-lg border-2 border-stone-700 p-3 shadow-xl self-stretch min-h-0">
+          <div
+            className="w-48 md:w-64 flex flex-col bg-stone-800/90 rounded-lg border-2 border-stone-700 p-3 shadow-xl"
+            style={gridHeight ? { height: gridHeight } : { alignSelf: 'stretch' }}
+          >
             <div className="flex items-center justify-between mb-2 shrink-0">
               <div className="flex items-center gap-2">
                 <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">Pts</span>
                 <span className="text-lg font-black text-amber-400">{score}</span>
               </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setIsPaused(!isPaused)}
-                  disabled={isGameOver}
-                  className="px-3 py-1.5 rounded-lg font-bold text-sm bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
-                >
-                  {isPaused ? 'Resume' : 'Pause'}
-                </button>
-                <button onClick={onExit} className="p-1.5 text-stone-400 hover:text-stone-200 transition-colors">
-                  <X size={18} />
-                </button>
-              </div>
+              <button
+                onClick={() => setIsPaused(!isPaused)}
+                disabled={isGameOver}
+                className="px-3 py-1.5 rounded-lg font-bold text-sm bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
+              >
+                {isPaused ? 'Resume' : 'Pause'}
+              </button>
             </div>
-            <div ref={historyRef} className="flex-1 overflow-y-auto min-h-0 space-y-1 md:space-y-2">
+            <div className="flex-1 overflow-hidden min-h-0 space-y-1 md:space-y-2">
             {wordHistory.length === 0 ? (
               <div className="text-center text-stone-500 text-sm py-8">No words yet</div>
             ) : (
-              wordHistory.map((entry, index) => (
+              wordHistory.slice(0, 8).map((entry, index) => (
                 <div key={entry.id}
                   className={`px-2 md:px-3 py-1 md:py-2 rounded transition-all ${
                     index === 0 ? 'bg-amber-900/70 ring-2 ring-amber-600' : 'bg-stone-700/40'

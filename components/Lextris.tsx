@@ -687,33 +687,33 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
 
   return (
     <div className="h-[100svh] w-full bg-gradient-to-br from-stone-900 via-stone-800 to-stone-900 text-white flex flex-col overflow-hidden">
-      <header className="shrink-0 bg-stone-950 border-b-2 border-stone-800 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-black text-amber-500">HOOK TRAINER</h1>
+      <header className="shrink-0 bg-stone-950 border-b-2 border-stone-800 px-3 py-2 flex items-center justify-between" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-black text-amber-500">HOOK TRAINER</h1>
           <div className="text-center">
             <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider block">Points</span>
-            <span className="text-xl font-black text-amber-400">{score}</span>
+            <span className="text-lg font-black text-amber-400">{score}</span>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           <button
             onClick={() => setIsPaused(!isPaused)}
             disabled={isGameOver}
-            className="px-4 py-2 rounded-lg font-bold bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg font-bold text-sm bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
           >
             {isPaused ? 'Resume' : 'Pause'}
           </button>
-          <button onClick={resetGame} className="p-2 text-stone-400 hover:text-stone-200 transition-colors">
-            <RotateCcw size={20} />
+          <button onClick={resetGame} className="p-1.5 text-stone-400 hover:text-stone-200 transition-colors">
+            <RotateCcw size={18} />
           </button>
-          <button onClick={onExit} className="p-2 text-stone-400 hover:text-stone-200 transition-colors">
-            <X size={20} />
+          <button onClick={onExit} className="p-1.5 text-stone-400 hover:text-stone-200 transition-colors">
+            <X size={18} />
           </button>
         </div>
       </header>
 
-      <main className="flex-1 flex items-end justify-center gap-8 p-4 overflow-hidden">
-        <div className="flex flex-col items-center gap-4">
+      <main className="flex-1 flex flex-col md:flex-row items-center md:items-end justify-center gap-2 md:gap-8 p-2 md:p-4 overflow-hidden">
+        <div className="flex flex-col items-center gap-2">
           {/* Hook bonus indicator */}
           {hookBonusMessage && (
             <div className="px-4 py-2 bg-amber-600/90 rounded-lg text-stone-900 font-black text-sm animate-pulse">
@@ -771,36 +771,36 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
 
           <div className="flex gap-2">
             <button onClick={moveLeft} disabled={!fallingLetter || isGameOver || isPaused}
-              className="w-16 h-16 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
-              <ChevronLeft size={32} />
+              className="w-14 h-14 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
+              <ChevronLeft size={28} />
             </button>
             <button onClick={moveDown} disabled={!fallingLetter || isGameOver || isPaused}
-              className="w-16 h-16 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
-              <ChevronDown size={32} />
+              className="w-14 h-14 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
+              <ChevronDown size={28} />
             </button>
             <button onClick={moveRight} disabled={!fallingLetter || isGameOver || isPaused}
-              className="w-16 h-16 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
-              <ChevronRight size={32} />
+              className="w-14 h-14 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
+              <ChevronRight size={28} />
             </button>
           </div>
         </div>
 
-        <div className="w-64 h-full flex flex-col bg-stone-800/90 rounded-lg border-2 border-stone-700 p-4 shadow-xl">
-          <div className="text-center mb-4">
-            <h2 className="text-lg font-black text-stone-300 uppercase tracking-wider">Word History</h2>
+        <div className="w-full md:w-64 max-h-40 md:max-h-none md:h-full flex flex-col bg-stone-800/90 rounded-lg border-2 border-stone-700 p-3 md:p-4 shadow-xl">
+          <div className="text-center mb-2 md:mb-4">
+            <h2 className="text-sm md:text-lg font-black text-stone-300 uppercase tracking-wider">Word History</h2>
           </div>
-          <div className="flex-1 overflow-y-auto space-y-2">
+          <div className="flex-1 overflow-y-auto space-y-1 md:space-y-2">
             {wordHistory.length === 0 ? (
               <div className="text-center text-stone-500 text-sm py-8">No words yet</div>
             ) : (
               wordHistory.map((entry, index) => (
                 <div key={entry.id}
-                  className={`px-3 py-2 rounded transition-all ${
+                  className={`px-2 md:px-3 py-1 md:py-2 rounded transition-all ${
                     index === 0 ? 'bg-amber-900/70 ring-2 ring-amber-600' : 'bg-stone-700/40'
                   }`}>
                   <div className="flex items-center justify-between">
-                    <span className="font-black text-stone-100 text-lg">{entry.word}</span>
-                    <span className="font-black text-amber-400 text-lg">+{entry.points}</span>
+                    <span className="font-black text-stone-100 text-sm md:text-lg">{entry.word}</span>
+                    <span className="font-black text-amber-400 text-sm md:text-lg">+{entry.points}</span>
                   </div>
                   {entry.definition && (
                     <div className="text-xs text-stone-400 mt-0.5 leading-tight">{entry.definition}</div>

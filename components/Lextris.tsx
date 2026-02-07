@@ -769,18 +769,9 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
             className="w-48 md:w-64 flex flex-col bg-stone-800/90 rounded-lg border-2 border-stone-700 p-3 shadow-xl"
             style={gridHeight ? { height: gridHeight } : { alignSelf: 'stretch' }}
           >
-            <div className="flex items-center justify-between mb-2 shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">Pts</span>
-                <span className="text-lg font-black text-amber-400">{score}</span>
-              </div>
-              <button
-                onClick={() => setIsPaused(!isPaused)}
-                disabled={isGameOver}
-                className="px-3 py-1.5 rounded-lg font-bold text-sm bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
-              >
-                {isPaused ? 'Resume' : 'Pause'}
-              </button>
+            <div className="flex items-center gap-2 mb-2 shrink-0">
+              <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">Pts</span>
+              <span className="text-lg font-black text-amber-400">{score}</span>
             </div>
             <div className="flex-1 overflow-hidden min-h-0 space-y-1 md:space-y-2">
             {wordHistory.length === 0 ? (
@@ -806,7 +797,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
         </div>
 
         {/* Controls under the grid */}
-        <div className="flex gap-2 mt-2">
+        <div className="flex items-center gap-2 mt-2">
           <button onClick={moveLeft} disabled={!fallingLetter || isGameOver || isPaused}
             className="w-14 h-14 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
             <ChevronLeft size={28} />
@@ -818,6 +809,13 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
           <button onClick={moveRight} disabled={!fallingLetter || isGameOver || isPaused}
             className="w-14 h-14 bg-stone-800 hover:bg-stone-700 active:bg-stone-600 rounded-xl text-stone-300 border-2 border-stone-700 flex items-center justify-center disabled:opacity-30">
             <ChevronRight size={28} />
+          </button>
+          <button
+            onClick={() => setIsPaused(!isPaused)}
+            disabled={isGameOver}
+            className="ml-2 px-4 h-14 rounded-xl font-bold text-sm bg-amber-600 hover:bg-amber-500 text-stone-900 transition-all disabled:opacity-50"
+          >
+            {isPaused ? 'Resume' : 'Pause'}
           </button>
         </div>
       </main>

@@ -454,18 +454,19 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit, onHighScore, 
             const capturedNextPhase = nextPhase;
             const capturedExtended = extendedWord;
             setTimeout(() => {
-              setGrid(prev => {
-                const currentGrid = prev.map(r => r.map(c => ({ ...c })));
+              setGrid(currentGrid => {
+                const gridCopy = currentGrid.map(r => r.map(c => ({ ...c })));
                 // Check if hooks exist at the next level
                 const nextHooks = lookupHooks(capturedExtended, capturedNextPhase);
                 const hasNext = nextHooks.front.length > 0 || nextHooks.back.length > 0;
 
                 if (hasNext) {
-                  enterHookPhase(capturedExtended, capturedAnchorRow, capturedNextPhase, currentGrid);
-                  return prev;
+                  // Schedule enterHookPhase outside setGrid to avoid nested setGrid conflicts
+                  queueMicrotask(() => enterHookPhase(capturedExtended, capturedAnchorRow, capturedNextPhase, gridCopy));
+                  return currentGrid;
                 } else {
                   console.log(`🪝 No ${capturedNextPhase} hooks available, returning to normal play`);
-                  const shrunk = resizeGrid(BASE_COLS, currentGrid);
+                  const shrunk = resizeGrid(BASE_COLS, gridCopy);
                   for (let col = 0; col < BASE_COLS; col++) {
                     shrunk[capturedAnchorRow][col] = { letter: null, isGreyedOut: false, id: 0 };
                   }
@@ -587,22 +588,25 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit, onHighScore, 
 
         if (hasHooks) {
           console.log(`🪝 Hooks found for "${formedWord}": front=[${hooks.front}], back=[${hooks.back}]`);
-          // Place the falling letter in the grid for the base word
+          // Place the falling letter in the grid, then enter hook phase after delay
+          const capturedAnchorRow = anchorRow;
+          const capturedFormedWord = formedWord;
+          const capturedFallingCol = fallingCol;
           setGrid(prev => {
             const newGrid = prev.map(r => r.map(c => ({ ...c })));
-            newGrid[anchorRow][fallingCol] = { letter: currentFalling, isGreyedOut: false, id: getNextId() };
+            newGrid[capturedAnchorRow][capturedFallingCol] = { letter: currentFalling, isGreyedOut: false, id: getNextId() };
             return newGrid;
           });
 
           // Enter hook phase after a brief delay
-          const capturedAnchorRow = anchorRow;
-          const capturedFormedWord = formedWord;
+          // Use setGrid to read latest grid, then call enterHookPhase which sets grid directly
           setTimeout(() => {
-            setGrid(prev => {
-              const currentGrid = prev.map(r => r.map(c => ({ ...c })));
-              // enterHookPhase will call setGrid itself
-              enterHookPhase(capturedFormedWord, capturedAnchorRow, 'hook2to3', currentGrid);
-              return prev;
+            // Read current grid snapshot, then let enterHookPhase take over
+            setGrid(currentGrid => {
+              const gridCopy = currentGrid.map(r => r.map(c => ({ ...c })));
+              // Schedule enterHookPhase outside of setGrid to avoid nested setGrid conflicts
+              queueMicrotask(() => enterHookPhase(capturedFormedWord, capturedAnchorRow, 'hook2to3', gridCopy));
+              return currentGrid;
             });
           }, 400);
         } else {

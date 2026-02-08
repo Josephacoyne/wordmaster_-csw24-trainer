@@ -578,18 +578,14 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit, onHighScore, 
           return;
         }
 
-        // Hooks should almost always expand if possible — teaches hook words
-        // ~10% chance to skip hooks for pure 2-letter practice variety
-        const hookRoll = Math.random();
-        const maxPhase: HookPhase = hookRoll < 0.1 ? 'none' : 'hook4to5';
-        hookMaxPhaseRef.current = maxPhase;
-        console.log(`🎲 Hook variety roll: ${hookRoll.toFixed(2)} → maxPhase=${maxPhase}`);
+        // Always expand if hooks exist — teaches hook words
+        hookMaxPhaseRef.current = 'hook4to5';
 
         // Check for hooks on this 2-letter word
         const hooks = lookupHooks(formedWord, 'hook2to3');
         const hasHooks = hooks.front.length > 0 || hooks.back.length > 0;
 
-        if (hasHooks && maxPhase !== 'none') {
+        if (hasHooks) {
           console.log(`🪝 Hooks found for "${formedWord}": front=[${hooks.front}], back=[${hooks.back}]`);
           // Place the falling letter in the grid for the base word
           setGrid(prev => {
@@ -610,7 +606,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit, onHighScore, 
             });
           }, 400);
         } else {
-          // No hooks or skipping hooks - normal clear and spawn
+          // No hooks available - normal clear and spawn
           setGrid(prev => {
             const newGrid = prev.map(r => r.map(c => ({ ...c })));
             for (let col = 0; col < activeCols; col++) {

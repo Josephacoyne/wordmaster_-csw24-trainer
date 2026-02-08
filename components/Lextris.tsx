@@ -441,20 +441,13 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit, onHighScore, 
             definition: getDefinition(extendedWord)
           }, ...h]);
 
-          // Try to chain to the next hook level, respecting hookMaxPhase
+          // Always chain to the next hook level if available
           const capturedAnchorRow = anchorRow;
-          const currentMaxPhase = hookMaxPhaseRef.current;
           let nextPhase: HookPhase | null = null;
           if (hookPhase === 'hook2to3') {
-            // Only continue if maxPhase allows beyond hook2to3
-            if (currentMaxPhase !== 'hook2to3') {
-              nextPhase = 'hook3to4';
-            }
+            nextPhase = 'hook3to4';
           } else if (hookPhase === 'hook3to4') {
-            // 50/50 chance to continue to hook4to5 within full chain
-            if (currentMaxPhase === 'hook4to5' && Math.random() < 0.5) {
-              nextPhase = 'hook4to5';
-            }
+            nextPhase = 'hook4to5';
           }
 
           if (nextPhase) {
@@ -585,17 +578,10 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit, onHighScore, 
           return;
         }
 
-        // Randomize hook depth for variety:
-        // 30% skip hooks, 30% one hook only (2→3), 40% full chain
+        // Hooks should almost always expand if possible — teaches hook words
+        // ~10% chance to skip hooks for pure 2-letter practice variety
         const hookRoll = Math.random();
-        let maxPhase: HookPhase;
-        if (hookRoll < 0.3) {
-          maxPhase = 'none';
-        } else if (hookRoll < 0.6) {
-          maxPhase = 'hook2to3';
-        } else {
-          maxPhase = 'hook4to5'; // full chain (will be further limited at hook3to4)
-        }
+        const maxPhase: HookPhase = hookRoll < 0.1 ? 'none' : 'hook4to5';
         hookMaxPhaseRef.current = maxPhase;
         console.log(`🎲 Hook variety roll: ${hookRoll.toFixed(2)} → maxPhase=${maxPhase}`);
 

@@ -17,6 +17,8 @@ const FIVE_LETTER_HOOKS: Record<string, HookEntry> = fiveLetterHooksData;
 interface LextrisProps {
   fullDictionary: WordEntry[];
   onExit: () => void;
+  onHighScore?: (score: number) => void;
+  highScore?: number;
 }
 
 interface Cell {
@@ -44,7 +46,7 @@ function makeEmptyGrid(cols: number): Cell[][] {
   );
 }
 
-const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
+const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit, onHighScore, highScore = 0 }) => {
   const [dictionaryLoaded, setDictionaryLoaded] = useState(true);
 
   // Dynamic column width
@@ -96,6 +98,10 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
   const [hookWordCols, setHookWordCols] = useState<number[]>([]);
   const [hookValidSides, setHookValidSides] = useState<Set<'front' | 'back'>>(new Set());
   const [hookBonusMessage, setHookBonusMessage] = useState<string | null>(null);
+
+  // Hook variety: controls how deep the hook chain goes for this round
+  // 'none' = skip hooks entirely, 'hook2to3' = stop after 3L, 'hook3to4' = stop after 4L, 'hook4to5' = full chain
+  const hookMaxPhaseRef = useRef<HookPhase>('hook4to5');
 
   const idCounter = useRef(0);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -351,6 +357,13 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
     }
   }, [dictionaryLoaded, anchorLetter, isGameOver, spawnNewRound, remainingWords]);
 
+  // Report high score when game ends
+  useEffect(() => {
+    if (isGameOver && score > 0) {
+      onHighScore?.(score);
+    }
+  }, [isGameOver]);
+
   // Move falling letter
   const moveLeft = useCallback(() => {
     if (!fallingLetter || isPaused || isGameOver) return;
@@ -428,11 +441,21 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
             definition: getDefinition(extendedWord)
           }, ...h]);
 
-          // Try to chain to the next hook level
+          // Try to chain to the next hook level, respecting hookMaxPhase
           const capturedAnchorRow = anchorRow;
+          const currentMaxPhase = hookMaxPhaseRef.current;
           let nextPhase: HookPhase | null = null;
-          if (hookPhase === 'hook2to3') nextPhase = 'hook3to4';
-          else if (hookPhase === 'hook3to4') nextPhase = 'hook4to5';
+          if (hookPhase === 'hook2to3') {
+            // Only continue if maxPhase allows beyond hook2to3
+            if (currentMaxPhase !== 'hook2to3') {
+              nextPhase = 'hook3to4';
+            }
+          } else if (hookPhase === 'hook3to4') {
+            // 50/50 chance to continue to hook4to5 within full chain
+            if (currentMaxPhase === 'hook4to5' && Math.random() < 0.5) {
+              nextPhase = 'hook4to5';
+            }
+          }
 
           if (nextPhase) {
             const capturedNextPhase = nextPhase;
@@ -562,11 +585,25 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
           return;
         }
 
+        // Randomize hook depth for variety:
+        // 30% skip hooks, 30% one hook only (2→3), 40% full chain
+        const hookRoll = Math.random();
+        let maxPhase: HookPhase;
+        if (hookRoll < 0.3) {
+          maxPhase = 'none';
+        } else if (hookRoll < 0.6) {
+          maxPhase = 'hook2to3';
+        } else {
+          maxPhase = 'hook4to5'; // full chain (will be further limited at hook3to4)
+        }
+        hookMaxPhaseRef.current = maxPhase;
+        console.log(`🎲 Hook variety roll: ${hookRoll.toFixed(2)} → maxPhase=${maxPhase}`);
+
         // Check for hooks on this 2-letter word
         const hooks = lookupHooks(formedWord, 'hook2to3');
         const hasHooks = hooks.front.length > 0 || hooks.back.length > 0;
 
-        if (hasHooks) {
+        if (hasHooks && maxPhase !== 'none') {
           console.log(`🪝 Hooks found for "${formedWord}": front=[${hooks.front}], back=[${hooks.back}]`);
           // Place the falling letter in the grid for the base word
           setGrid(prev => {
@@ -587,7 +624,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
             });
           }, 400);
         } else {
-          // No hooks - normal clear and spawn
+          // No hooks or skipping hooks - normal clear and spawn
           setGrid(prev => {
             const newGrid = prev.map(r => r.map(c => ({ ...c })));
             for (let col = 0; col < activeCols; col++) {
@@ -825,7 +862,12 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit }) => {
           <div className="bg-stone-800 rounded-2xl p-8 shadow-2xl max-w-sm w-full text-center border-2 border-stone-700">
             <h2 className="text-3xl font-black text-stone-100 mb-2">Game Over!</h2>
             <p className="text-xl text-stone-300 mb-2">Points:</p>
-            <div className="text-5xl font-black text-amber-500 mb-6">{score}</div>
+            <div className="text-5xl font-black text-amber-500 mb-2">{score}</div>
+            {score > highScore ? (
+              <div className="text-lg font-black text-yellow-300 mb-4 animate-pulse">New High Score!</div>
+            ) : highScore > 0 ? (
+              <div className="text-sm font-bold text-stone-400 mb-4">Best: {highScore}</div>
+            ) : <div className="mb-4" />}
             <div className="flex flex-col gap-3">
               <button onClick={resetGame}
                 className="py-4 bg-amber-600 hover:bg-amber-500 rounded-xl text-stone-900 font-black text-lg transition-all">

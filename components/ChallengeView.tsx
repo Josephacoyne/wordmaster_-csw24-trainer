@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { WordEntry, WordLength, ChallengeItem } from '../types';
 import { X, Trophy, ArrowLeft, ArrowRight, Gamepad2, AlertTriangle } from 'lucide-react';
 
@@ -9,6 +9,7 @@ interface ChallengeViewProps {
   onExit: () => void;
   autoStartLength?: WordLength | null;
   onDeckComplete?: (length: WordLength, totalErrors: number) => void;
+  onStatsUpdate?: (length: number, correct: number, incorrect: number, bestStreak: number) => void;
 }
 
 const ChallengeView: React.FC<ChallengeViewProps> = ({
@@ -17,7 +18,8 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   fakes,
   onExit,
   autoStartLength,
-  onDeckComplete
+  onDeckComplete,
+  onStatsUpdate
 }) => {
   // Setup State
   const [isPlaying, setIsPlaying] = useState(false);
@@ -39,6 +41,12 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   const [isRedemption, setIsRedemption] = useState(false);
   const [savedMainIndex, setSavedMainIndex] = useState(0);
   const [savedMainDeck, setSavedMainDeck] = useState<ChallengeItem[]>([]);
+
+  // Streak tracking (refs to avoid stale closures)
+  const currentStreakRef = useRef(0);
+  const bestStreakRef = useRef(0);
+  const correctRef = useRef(0);
+  const incorrectRef = useRef(0);
 
   // Redemption notice/results screens
   const [showRedemptionNotice, setShowRedemptionNotice] = useState(false);
@@ -90,6 +98,10 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
     setIncorrect(0);
     setMissedWords([]);
     setIsRedemption(false);
+    currentStreakRef.current = 0;
+    bestStreakRef.current = 0;
+    correctRef.current = 0;
+    incorrectRef.current = 0;
     setIsPlaying(true);
     setIsComplete(false);
     setResult(null);
@@ -109,7 +121,10 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
         setShowRedemptionResults(true);
       } else {
         if (targetLength) {
-          onDeckComplete?.(targetLength, incorrect);
+          onDeckComplete?.(targetLength, incorrectRef.current);
+          if (typeof targetLength === 'number' && [2, 3, 4].includes(targetLength)) {
+            onStatsUpdate?.(targetLength, correctRef.current, incorrectRef.current, bestStreakRef.current);
+          }
         }
         setIsComplete(true);
       }
@@ -168,6 +183,13 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
     if (isCorrect) {
       setResult('CORRECT');
       setCorrect(prev => prev + 1);
+      correctRef.current += 1;
+      if (!isRedemption) {
+        currentStreakRef.current += 1;
+        if (currentStreakRef.current > bestStreakRef.current) {
+          bestStreakRef.current = currentStreakRef.current;
+        }
+      }
       if (isRedemption) {
         setRedemptionCorrect(prev => prev + 1);
       }
@@ -181,6 +203,10 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
     } else {
       setResult('WRONG');
       setIncorrect(prev => prev + 1);
+      incorrectRef.current += 1;
+      if (!isRedemption) {
+        currentStreakRef.current = 0;
+      }
 
       if (currentItem.isReal && currentItem.data) {
         const newMissed = [...missedWords, currentItem];

@@ -23,6 +23,7 @@ import { Trophy, Zap, Star } from 'lucide-react';
 // --- TYPE DEFINITIONS FOR SAVED STATE ---
 type ProgressMap = Record<string, number>;
 type MedalMap = Record<string, Medal>;
+type ChallengeStats = Record<string, { correct: number; incorrect: number; bestStreak: number }>;
 
 const MEDAL_RANK: Record<Medal, number> = { gold: 3, silver: 2, bronze: 1 };
 
@@ -58,6 +59,10 @@ const App: React.FC = () => {
   // Medals
   const [medals, setMedals] = useState<MedalMap>({});
 
+  // Challenge Stats & Lextris High Score
+  const [challengeStats, setChallengeStats] = useState<ChallengeStats>({});
+  const [lextrisHighScore, setLextrisHighScore] = useState<number>(0);
+
   // --- INITIAL LOAD & SAVE ---
   useEffect(() => {
     const savedProgress = localStorage.getItem('endcap_training_progress');
@@ -78,6 +83,18 @@ const App: React.FC = () => {
             setMedals(JSON.parse(savedMedals));
         } catch (e) { console.error("Failed to load medals", e); }
     }
+
+    const savedChallengeStats = localStorage.getItem('endcap_challenge_stats');
+    if (savedChallengeStats) {
+        try {
+            setChallengeStats(JSON.parse(savedChallengeStats));
+        } catch (e) { console.error("Failed to load challenge stats", e); }
+    }
+
+    const savedLextrisHighScore = localStorage.getItem('endcap_lextris_highscore');
+    if (savedLextrisHighScore) {
+        setLextrisHighScore(parseInt(savedLextrisHighScore, 10) || 0);
+    }
   }, []);
 
   // --- PERSISTENCE: SAVE EFFECTS ---
@@ -92,6 +109,14 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('endcap_medals', JSON.stringify(medals));
   }, [medals]);
+
+  useEffect(() => {
+    localStorage.setItem('endcap_challenge_stats', JSON.stringify(challengeStats));
+  }, [challengeStats]);
+
+  useEffect(() => {
+    localStorage.setItem('endcap_lextris_highscore', lextrisHighScore.toString());
+  }, [lextrisHighScore]);
 
   // --- MEDAL HELPER ---
   const saveMedal = (key: string, errors: number) => {
@@ -188,6 +213,25 @@ const App: React.FC = () => {
     saveMedal(`challenge-${length}`, totalErrors);
   };
 
+  const handleChallengeStatsUpdate = (length: number, correct: number, incorrect: number, bestStreak: number) => {
+    setChallengeStats(prev => {
+      const key = String(length);
+      const existing = prev[key];
+      return {
+        ...prev,
+        [key]: {
+          correct,
+          incorrect,
+          bestStreak: Math.max(bestStreak, existing?.bestStreak || 0),
+        },
+      };
+    });
+  };
+
+  const handleLextrisHighScore = (score: number) => {
+    setLextrisHighScore(prev => Math.max(prev, score));
+  };
+
   // --- ACTIONS: HOOKS ---
   const startHooks = () => {
     setHookDeck(allHookData);
@@ -237,7 +281,7 @@ const App: React.FC = () => {
             <h1 className="text-3xl font-black text-slate-800 tracking-tight mb-1">
               End<span className="text-indigo-600">Cap</span>
             </h1>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">CSW24 Lexicon Trainer</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">International/Collins (CSW24)</p>
           </div>
         </div>
       )}
@@ -322,6 +366,54 @@ const App: React.FC = () => {
               <span>LEXTRIS</span>
               <span className="text-stone-500 text-sm font-bold">Word Tetris</span>
             </button>
+
+            {/* SCOREBOARD */}
+            <div className="bg-white rounded-[2rem] shadow-sm border border-slate-200 p-5">
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 text-center">Scoreboard</h3>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                {([2, 3, 4] as const).map((len) => {
+                  // Training progress: sum completed words across all letters
+                  const totalWords = dictionaryByLength[len].length;
+                  let completedWords = 0;
+                  for (let c = 65; c <= 90; c++) {
+                    const letter = String.fromCharCode(c);
+                    const key = `${len}-${letter}`;
+                    const batchSize = dictionaryByLength[len].filter(w => w.w.startsWith(letter)).length;
+                    const progress = savedTrainingProgress[key] || 0;
+                    completedWords += Math.min(progress, batchSize);
+                  }
+                  const trainingPct = totalWords > 0 ? Math.round((completedWords / totalWords) * 100) : 0;
+
+                  const stats = challengeStats[String(len)];
+                  const challengeTotal = stats ? stats.correct + stats.incorrect : 0;
+                  const challengePct = challengeTotal > 0 ? Math.round((stats!.correct / challengeTotal) * 100) : 0;
+
+                  return (
+                    <div key={len} className="flex flex-col gap-2">
+                      <div className="text-lg font-black text-indigo-600">{len}L</div>
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase">Training</div>
+                        <div className="text-sm font-black text-slate-700">{trainingPct}%</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase">Challenge</div>
+                        <div className="text-sm font-black text-slate-700">{challengeTotal > 0 ? `${challengePct}%` : '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase">Streak</div>
+                        <div className="text-sm font-black text-slate-700">{stats?.bestStreak || '—'}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Lextris High Score */}
+              <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+                <div className="text-[10px] font-bold text-slate-400 uppercase">Lextris High Score</div>
+                <div className="text-xl font-black text-amber-500">{lextrisHighScore > 0 ? lextrisHighScore : '—'}</div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -352,6 +444,7 @@ const App: React.FC = () => {
             onExit={handleHome}
             autoStartLength={autoStartChallenge}
             onDeckComplete={handleChallengeComplete}
+            onStatsUpdate={handleChallengeStatsUpdate}
           />
         )}
 
@@ -378,6 +471,8 @@ const App: React.FC = () => {
           <Lextris
             fullDictionary={CSW_DICTIONARY}
             onExit={handleHome}
+            onHighScore={handleLextrisHighScore}
+            highScore={lextrisHighScore}
           />
         )}
 

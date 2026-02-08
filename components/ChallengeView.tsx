@@ -55,6 +55,14 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   const [redemptionCorrect, setRedemptionCorrect] = useState(0);
   const [redemptionTotal, setRedemptionTotal] = useState(0);
 
+  // Exit handler: report stats before leaving
+  const handleExit = () => {
+    if (isPlaying && typeof targetLength === 'number' && [2, 3, 4].includes(targetLength) && (correctRef.current > 0 || incorrectRef.current > 0)) {
+      onStatsUpdate?.(targetLength, correctRef.current, incorrectRef.current, bestStreakRef.current);
+    }
+    onExit();
+  };
+
   // Derived
   const currentItem = deck[deckIndex];
 
@@ -327,7 +335,7 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
                Resume Challenge
              </button>
              <button
-               onClick={onExit}
+               onClick={handleExit}
                className="w-full py-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:scale-95 transition-all"
              >
                Exit
@@ -376,7 +384,7 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
   return (
     <div className="fixed inset-0 flex flex-col h-[100svh] w-full bg-slate-50 overflow-hidden">
       <div className="flex items-center justify-between p-4 z-10 shrink-0">
-        <button onClick={onExit} className="p-2 bg-white/50 backdrop-blur rounded-full text-slate-500 hover:bg-white transition-all">
+        <button onClick={handleExit} className="p-2 bg-white/50 backdrop-blur rounded-full text-slate-500 hover:bg-white transition-all">
           <X size={20} />
         </button>
         <div className="flex flex-col items-center">

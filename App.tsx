@@ -24,6 +24,7 @@ import { Trophy, Zap, Star } from 'lucide-react';
 type ProgressMap = Record<string, number>;
 type MedalMap = Record<string, Medal>;
 type ChallengeStats = Record<string, { correct: number; incorrect: number; bestStreak: number }>;
+type TrainingAccuracy = Record<string, { totalWords: number; totalErrors: number }>;
 
 const MEDAL_RANK: Record<Medal, number> = { gold: 3, silver: 2, bronze: 1 };
 
@@ -63,6 +64,9 @@ const App: React.FC = () => {
   const [challengeStats, setChallengeStats] = useState<ChallengeStats>({});
   const [lextrisHighScore, setLextrisHighScore] = useState<number>(0);
 
+  // Training Accuracy (accumulated across batches)
+  const [trainingAccuracy, setTrainingAccuracy] = useState<TrainingAccuracy>({});
+
   // --- INITIAL LOAD & SAVE ---
   useEffect(() => {
     const savedProgress = localStorage.getItem('endcap_training_progress');
@@ -95,6 +99,13 @@ const App: React.FC = () => {
     if (savedLextrisHighScore) {
         setLextrisHighScore(parseInt(savedLextrisHighScore, 10) || 0);
     }
+
+    const savedTrainingAccuracy = localStorage.getItem('endcap_training_accuracy');
+    if (savedTrainingAccuracy) {
+        try {
+            setTrainingAccuracy(JSON.parse(savedTrainingAccuracy));
+        } catch (e) { console.error("Failed to load training accuracy", e); }
+    }
   }, []);
 
   // --- PERSISTENCE: SAVE EFFECTS ---
@@ -117,6 +128,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('endcap_lextris_highscore', lextrisHighScore.toString());
   }, [lextrisHighScore]);
+
+  useEffect(() => {
+    localStorage.setItem('endcap_training_accuracy', JSON.stringify(trainingAccuracy));
+  }, [trainingAccuracy]);
 
   // --- MEDAL HELPER ---
   const saveMedal = (key: string, errors: number) => {
@@ -192,6 +207,20 @@ const App: React.FC = () => {
   const handleTrainingDeckComplete = (totalErrors: number) => {
     if (selectedLength === 'ALL') return;
 
+    // Accumulate training accuracy for this batch
+    const lenKey = String(selectedLength);
+    const batchSize = activeDeck.length;
+    setTrainingAccuracy(prev => {
+      const existing = prev[lenKey] || { totalWords: 0, totalErrors: 0 };
+      return {
+        ...prev,
+        [lenKey]: {
+          totalWords: existing.totalWords + batchSize,
+          totalErrors: existing.totalErrors + totalErrors,
+        },
+      };
+    });
+
     const nextCharCode = currentLetter.charCodeAt(0) + 1;
     const nextLetter = nextCharCode <= 90 ? String.fromCharCode(nextCharCode) : null;
 
@@ -230,6 +259,15 @@ const App: React.FC = () => {
 
   const handleLextrisHighScore = (score: number) => {
     setLextrisHighScore(prev => Math.max(prev, score));
+  };
+
+  const handleResetScoreboard = () => {
+    setSavedTrainingProgress({});
+    setTrainingAccuracy({});
+    setChallengeStats({});
+    setLextrisHighScore(0);
+    setMedals({});
+    setActiveHookIndex(0);
   };
 
   // --- ACTIONS: HOOKS ---
@@ -384,9 +422,11 @@ const App: React.FC = () => {
                   }
                   const trainingPct = totalWords > 0 ? Math.round((completedWords / totalWords) * 100) : 0;
 
-                  const stats = challengeStats[String(len)];
-                  const challengeTotal = stats ? stats.correct + stats.incorrect : 0;
-                  const challengePct = challengeTotal > 0 ? Math.round((stats!.correct / challengeTotal) * 100) : 0;
+                  // Training accuracy ratio
+                  const acc = trainingAccuracy[String(len)];
+                  const ratioPct = acc && acc.totalWords > 0
+                    ? Math.round(((acc.totalWords - acc.totalErrors) / acc.totalWords) * 100)
+                    : null;
 
                   return (
                     <div key={len} className="flex flex-col gap-2">
@@ -396,12 +436,8 @@ const App: React.FC = () => {
                         <div className="text-sm font-black text-slate-700">{trainingPct}%</div>
                       </div>
                       <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase">Challenge</div>
-                        <div className="text-sm font-black text-slate-700">{challengeTotal > 0 ? `${challengePct}%` : '—'}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase">Streak</div>
-                        <div className="text-sm font-black text-slate-700">{stats?.bestStreak || '—'}</div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase">Ratio</div>
+                        <div className="text-sm font-black text-slate-700">{ratioPct !== null ? `${ratioPct}%` : '—'}</div>
                       </div>
                     </div>
                   );
@@ -412,6 +448,16 @@ const App: React.FC = () => {
               <div className="mt-4 pt-3 border-t border-slate-100 text-center">
                 <div className="text-[10px] font-bold text-slate-400 uppercase">Lextris High Score</div>
                 <div className="text-xl font-black text-amber-500">{lextrisHighScore > 0 ? lextrisHighScore : '—'}</div>
+              </div>
+
+              {/* Reset Button */}
+              <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+                <button
+                  onClick={handleResetScoreboard}
+                  className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-rose-500 transition-colors"
+                >
+                  Reset
+                </button>
               </div>
             </div>
           </div>

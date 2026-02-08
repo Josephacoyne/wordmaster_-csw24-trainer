@@ -741,7 +741,7 @@ const Lextris: React.FC<LextrisProps> = ({ fullDictionary, onExit, onHighScore, 
     <div className="h-[100svh] w-full bg-gradient-to-br from-stone-900 via-stone-800 to-stone-900 text-white flex flex-col overflow-hidden">
       {/* BACK button */}
       <div className="shrink-0 px-3 pt-2" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
-        <button onClick={onExit} className="px-4 py-1.5 rounded-lg font-bold text-sm bg-stone-700 hover:bg-stone-600 text-stone-300 transition-all">
+        <button onClick={() => { if (!isGameOver && score > 0) onHighScore?.(score); onExit(); }} className="px-4 py-1.5 rounded-lg font-bold text-sm bg-stone-700 hover:bg-stone-600 text-stone-300 transition-all">
           BACK
         </button>
       </div>
